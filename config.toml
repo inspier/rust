@@ -171,7 +171,7 @@ targets = "X86;AArch64"
 # first compiler.
 #
 # Defaults to host platform
-build = "x86_64-unknown-linux-gnu"
+#build = "x86_64-unknown-linux-gnu"
 
 # Which triples to produce a compiler toolchain for. Each of these triples will
 # be bootstrapped from the build triple themselves.
@@ -193,11 +193,11 @@ target = ["x86_64-unknown-linux-gnu","aarch64-skyline-switch"]
 
 # Instead of downloading the src/stage0.txt version of Cargo specified, use
 # this Cargo binary instead to build all Rust code
-cargo = "~/.cargo/bin/cargo"
+#cargo = "~/.cargo/bin/cargo"
 
 # Instead of downloading the src/stage0.txt version of the compiler
 # specified, use this rustc binary instead as the stage0 snapshot compiler.
-rustc = "~/.cargo/bin/rustc"
+#rustc = "~/.cargo/bin/rustc"
 
 # Instead of download the src/stage0.txt version of rustfmt specified,
 # use this rustfmt binary instead as the stage0 snapshot rustfmt.
