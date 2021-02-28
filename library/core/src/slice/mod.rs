@@ -18,6 +18,7 @@ use crate::option::Option::{None, Some};
 use crate::ptr;
 use crate::result::Result;
 use crate::result::Result::{Err, Ok};
+use crate::slice;
 
 #[unstable(
     feature = "slice_internals",
@@ -29,11 +30,12 @@ pub mod memchr;
 
 mod ascii;
 mod cmp;
-pub(crate) mod index;
+mod index;
 mod iter;
 mod raw;
 mod rotate;
 mod sort;
+mod specialize;
 
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use iter::{Chunks, ChunksMut, Windows};
@@ -75,6 +77,9 @@ pub use sort::heapsort;
 
 #[stable(feature = "slice_get_slice", since = "1.28.0")]
 pub use index::SliceIndex;
+
+#[unstable(feature = "slice_range", issue = "76393")]
+pub use index::range;
 
 #[lang = "slice"]
 #[cfg(not(test))]
@@ -2862,13 +2867,7 @@ impl<T> [T] {
     where
         T: Clone,
     {
-        if let Some((last, elems)) = self.split_last_mut() {
-            for el in elems {
-                el.clone_from(&value);
-            }
-
-            *last = value
-        }
+        specialize::SpecFill::spec_fill(self, value);
     }
 
     /// Fills `self` with elements returned by calling a closure repeatedly.
@@ -3075,7 +3074,7 @@ impl<T> [T] {
     where
         T: Copy,
     {
-        let Range { start: src_start, end: src_end } = src.assert_len(self.len());
+        let Range { start: src_start, end: src_end } = slice::range(src, ..self.len());
         let count = src_end - src_start;
         assert!(dest <= self.len() - count, "dest is out of bounds");
         // SAFETY: the conditions for `ptr::copy` have all been checked above,

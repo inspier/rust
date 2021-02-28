@@ -956,7 +956,7 @@ rustc_queries! {
         desc { |tcx| "computing normalized predicates of `{}`", tcx.def_path_str(def_id) }
     }
 
-    /// Like `param_env`, but returns the `ParamEnv in `Reveal::All` mode.
+    /// Like `param_env`, but returns the `ParamEnv` in `Reveal::All` mode.
     /// Prefer this over `tcx.param_env(def_id).with_reveal_all_normalized(tcx)`,
     /// as this method is more efficient.
     query param_env_reveal_all_normalized(def_id: DefId) -> ty::ParamEnv<'tcx> {
@@ -1602,5 +1602,15 @@ rustc_queries! {
 
     query normalize_opaque_types(key: &'tcx ty::List<ty::Predicate<'tcx>>) -> &'tcx ty::List<ty::Predicate<'tcx>> {
         desc { "normalizing opaque types in {:?}", key }
+    }
+
+    /// Checks whether a type is definitely uninhabited. This is
+    /// conservative: for some types that are uninhabited we return `false`,
+    /// but we only return `true` for types that are definitely uninhabited.
+    /// `ty.conservative_is_privately_uninhabited` implies that any value of type `ty`
+    /// will be `Abi::Uninhabited`. (Note that uninhabited types may have nonzero
+    /// size, to account for partial initialisation. See #49298 for details.)
+    query conservative_is_privately_uninhabited(key: ty::ParamEnvAnd<'tcx, Ty<'tcx>>) -> bool {
+        desc { "conservatively checking if {:?} is privately uninhabited", key }
     }
 }

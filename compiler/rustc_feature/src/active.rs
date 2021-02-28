@@ -633,10 +633,13 @@ declare_features! (
     (active, abi_c_cmse_nonsecure_call, "1.51.0", Some(81391), None),
 
     /// Lessens the requirements for structs to implement `Unsize`.
-    (active, relaxed_struct_unsize, "1.51.0", Some(1), None),
+    (active, relaxed_struct_unsize, "1.51.0", Some(81793), None),
 
     /// Allows macro attributes to observe output of `#[derive]`.
     (active, macro_attributes_in_derive_output, "1.51.0", Some(81119), None),
+
+    /// Allows `pub` on `macro_rules` items.
+    (active, pub_macro_rules, "1.52.0", Some(78855), None),
 
     // -------------------------------------------------------------------------
     // feature-group-end: actual feature gates
