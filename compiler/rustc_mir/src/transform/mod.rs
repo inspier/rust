@@ -42,6 +42,7 @@ pub mod no_landing_pads;
 pub mod nrvo;
 pub mod promote_consts;
 pub mod remove_noop_landing_pads;
+pub mod remove_storage_markers;
 pub mod remove_unneeded_drops;
 pub mod required_consts;
 pub mod rustc_peek;
@@ -429,8 +430,7 @@ fn mir_drops_elaborated_and_const_checked<'tcx>(
         let def = ty::WithOptConstParam::unknown(did);
 
         // Do not compute the mir call graph without said call graph actually being used.
-        // Keep this in sync with the mir inliner's optimization level.
-        if tcx.sess.opts.debugging_opts.mir_opt_level >= 2 {
+        if inline::is_enabled(tcx) {
             let _ = tcx.mir_inliner_callees(ty::InstanceDef::Item(def));
         }
     }
@@ -493,6 +493,7 @@ fn run_optimization_passes<'tcx>(tcx: TyCtxt<'tcx>, body: &mut Body<'tcx>) {
 
     // The main optimizations that we do on MIR.
     let optimizations: &[&dyn MirPass<'tcx>] = &[
+        &remove_storage_markers::RemoveStorageMarkers,
         &const_goto::ConstGoto,
         &remove_unneeded_drops::RemoveUnneededDrops,
         &match_branches::MatchBranchSimplification,

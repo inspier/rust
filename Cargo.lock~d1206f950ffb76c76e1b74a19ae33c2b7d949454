@@ -1767,7 +1767,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "shlex",
+ "shlex 0.1.1",
 ]
 
 [[package]]
@@ -2122,9 +2122,9 @@ dependencies = [
 
 [[package]]
 name = "mdbook"
-version = "0.4.6"
+version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3d948b64449003363127ed6c6139f03273982c3fe97da4cb3dee933e38ce38f"
+checksum = "28f6a882f3880ec68e96f60d6b543c34941e2f307ad10e2992e4db9acfe96529"
 dependencies = [
  "ammonia",
  "anyhow",
@@ -2142,18 +2142,21 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "shlex",
+ "shlex 1.0.0",
  "tempfile",
  "toml",
 ]
 
 [[package]]
 name = "measureme"
-version = "9.0.0"
+version = "9.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22bf8d885d073610aee20e7fa205c4341ed32a761dbde96da5fd96301a8d3e82"
+checksum = "4a98e07fe802486895addb2b5467f33f205e82c426bfaf350f5d8109b137767c"
 dependencies = [
+ "log",
+ "memmap",
  "parking_lot",
+ "perf-event-open-sys",
  "rustc-hash",
  "smallvec 1.6.1",
 ]
@@ -2549,6 +2552,15 @@ name = "percent-encoding"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4fd5641d01c8f18a23da7b6fe29298ff4b55afcccdf78973b24cf3175fee32e"
+
+[[package]]
+name = "perf-event-open-sys"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce9bedf5da2c234fdf2391ede2b90fabf585355f33100689bc364a3ea558561a"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "pest"
@@ -4542,6 +4554,9 @@ dependencies = [
  "serde_json",
  "smallvec 1.6.1",
  "tempfile",
+ "tracing",
+ "tracing-subscriber",
+ "tracing-tree",
 ]
 
 [[package]]
@@ -4845,6 +4860,12 @@ name = "shlex"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7fdf1b9db47230893d76faad238fd6097fd6d6a9245cd7a4d90dbd639536bbd2"
+
+[[package]]
+name = "shlex"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42a568c8f2cd051a4d283bd6eb0343ac214c1b0f1ac19f93e1175b2dee38c73d"
 
 [[package]]
 name = "signal-hook-registry"

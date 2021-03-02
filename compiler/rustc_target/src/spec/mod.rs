@@ -702,7 +702,6 @@ supported_targets! {
     ("powerpc-unknown-netbsd", powerpc_unknown_netbsd),
     ("sparc64-unknown-netbsd", sparc64_unknown_netbsd),
     ("x86_64-unknown-netbsd", x86_64_unknown_netbsd),
-    ("x86_64-rumprun-netbsd", x86_64_rumprun_netbsd),
 
     ("i686-unknown-haiku", i686_unknown_haiku),
     ("x86_64-unknown-haiku", x86_64_unknown_haiku),
@@ -737,9 +736,8 @@ supported_targets! {
     ("armv7r-none-eabi", armv7r_none_eabi),
     ("armv7r-none-eabihf", armv7r_none_eabihf),
 
-    // `x86_64-pc-solaris` is an alias for `x86_64_sun_solaris` for backwards compatibility reasons.
-    // (See <https://github.com/rust-lang/rust/issues/40531>.)
-    ("x86_64-sun-solaris", "x86_64-pc-solaris", x86_64_sun_solaris),
+    ("x86_64-pc-solaris", x86_64_pc_solaris),
+    ("x86_64-sun-solaris", x86_64_sun_solaris),
     ("sparcv9-sun-solaris", sparcv9_sun_solaris),
 
     ("x86_64-unknown-illumos", x86_64_unknown_illumos),
@@ -1986,24 +1984,6 @@ impl TargetTriple {
     pub fn from_path(path: &Path) -> Result<Self, io::Error> {
         let canonicalized_path = path.canonicalize()?;
         Ok(TargetTriple::TargetPath(canonicalized_path))
-    }
-
-    /// Creates a target triple from its alias
-    pub fn from_alias(triple: String) -> Self {
-        macro_rules! target_aliases {
-            ( $(($alias:literal, $target:literal ),)+ ) => {
-                match triple.as_str() {
-                    $( $alias => TargetTriple::from_triple($target), )+
-                    _ => TargetTriple::TargetTriple(triple),
-                }
-            }
-        }
-
-        target_aliases! {
-            // `x86_64-pc-solaris` is an alias for `x86_64_sun_solaris` for backwards compatibility reasons.
-            // (See <https://github.com/rust-lang/rust/issues/40531>.)
-            ("x86_64-pc-solaris", "x86_64-sun-solaris"),
-        }
     }
 
     /// Returns a string triple for this target.

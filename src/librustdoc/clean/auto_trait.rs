@@ -34,7 +34,7 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
         ty: Ty<'tcx>,
         trait_def_id: DefId,
         param_env: ty::ParamEnv<'tcx>,
-        param_env_def_id: DefId,
+        item_def_id: DefId,
         f: &auto_trait::AutoTraitFinder<'tcx>,
         // If this is set, show only negative trait implementations, not positive ones.
         discard_positive_impl: bool,
@@ -46,11 +46,11 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
             return None;
         }
 
-        let result = f.find_auto_trait_generics(ty, param_env, trait_def_id, |infcx, info| {
+        let result = f.find_auto_trait_generics(ty, param_env, trait_def_id, |info| {
             let region_data = info.region_data;
 
             let names_map = tcx
-                .generics_of(param_env_def_id)
+                .generics_of(item_def_id)
                 .params
                 .iter()
                 .filter_map(|param| match param.kind {
@@ -61,17 +61,16 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
                 .collect();
             let lifetime_predicates = Self::handle_lifetimes(&region_data, &names_map);
             let new_generics = self.param_env_to_generics(
-                infcx.tcx,
-                param_env_def_id,
+                item_def_id,
                 info.full_user_env,
                 lifetime_predicates,
                 info.vid_to_region,
             );
 
             debug!(
-                "find_auto_trait_generics(param_env_def_id={:?}, trait_def_id={:?}): \
+                "find_auto_trait_generics(item_def_id={:?}, trait_def_id={:?}): \
                     finished with {:?}",
-                param_env_def_id, trait_def_id, new_generics
+                item_def_id, trait_def_id, new_generics
             );
 
             new_generics
@@ -101,7 +100,7 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
                 // Instead, we generate `impl !Send for Foo<T>`, which better
                 // expresses the fact that `Foo<T>` never implements `Send`,
                 // regardless of the choice of `T`.
-                let params = (tcx.generics_of(param_env_def_id), ty::GenericPredicates::default())
+                let params = (tcx.generics_of(item_def_id), ty::GenericPredicates::default())
                     .clean(self.cx)
                     .params;
 
@@ -115,7 +114,7 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
             name: None,
             attrs: Default::default(),
             visibility: Inherited,
-            def_id: self.cx.next_def_id(param_env_def_id.krate),
+            def_id: self.cx.next_def_id(item_def_id.krate),
             kind: box ImplItem(Impl {
                 unsafety: hir::Unsafety::Normal,
                 generics: new_generics,
@@ -130,26 +129,25 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
         })
     }
 
-    // FIXME(eddyb) figure out a better way to pass information about
-    // parametrization of `ty` than `param_env_def_id`.
-    crate fn get_auto_trait_impls(&mut self, ty: Ty<'tcx>, param_env_def_id: DefId) -> Vec<Item> {
+    crate fn get_auto_trait_impls(&mut self, item_def_id: DefId) -> Vec<Item> {
         let tcx = self.cx.tcx;
-        let param_env = tcx.param_env(param_env_def_id);
-        let f = auto_trait::AutoTraitFinder::new(self.cx.tcx);
+        let param_env = tcx.param_env(item_def_id);
+        let ty = tcx.type_of(item_def_id);
+        let f = auto_trait::AutoTraitFinder::new(tcx);
 
         debug!("get_auto_trait_impls({:?})", ty);
         let auto_traits: Vec<_> = self.cx.auto_traits.iter().cloned().collect();
         let mut auto_traits: Vec<Item> = auto_traits
             .into_iter()
             .filter_map(|trait_def_id| {
-                self.generate_for_trait(ty, trait_def_id, param_env, param_env_def_id, &f, false)
+                self.generate_for_trait(ty, trait_def_id, param_env, item_def_id, &f, false)
             })
             .collect();
         // We are only interested in case the type *doesn't* implement the Sized trait.
-        if !ty.is_sized(self.cx.tcx.at(rustc_span::DUMMY_SP), param_env) {
+        if !ty.is_sized(tcx.at(rustc_span::DUMMY_SP), param_env) {
             // In case `#![no_core]` is used, `sized_trait` returns nothing.
-            if let Some(item) = self.cx.tcx.lang_items().sized_trait().and_then(|sized_trait_did| {
-                self.generate_for_trait(ty, sized_trait_did, param_env, param_env_def_id, &f, true)
+            if let Some(item) = tcx.lang_items().sized_trait().and_then(|sized_trait_did| {
+                self.generate_for_trait(ty, sized_trait_did, param_env, item_def_id, &f, true)
             }) {
                 auto_traits.push(item);
             }
@@ -314,12 +312,9 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
         lifetime_predicates
     }
 
-    fn extract_for_generics(
-        &self,
-        tcx: TyCtxt<'tcx>,
-        pred: ty::Predicate<'tcx>,
-    ) -> FxHashSet<GenericParamDef> {
+    fn extract_for_generics(&self, pred: ty::Predicate<'tcx>) -> FxHashSet<GenericParamDef> {
         let bound_predicate = pred.kind();
+        let tcx = self.cx.tcx;
         let regions = match bound_predicate.skip_binder() {
             ty::PredicateKind::Trait(poly_trait_pred, _) => {
                 tcx.collect_referenced_late_bound_regions(&bound_predicate.rebind(poly_trait_pred))
@@ -444,26 +439,26 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
     // * We explicitly add a '?Sized' bound if we didn't find any 'Sized' predicates for a type
     fn param_env_to_generics(
         &mut self,
-        tcx: TyCtxt<'tcx>,
-        param_env_def_id: DefId,
+        item_def_id: DefId,
         param_env: ty::ParamEnv<'tcx>,
         mut existing_predicates: Vec<WherePredicate>,
         vid_to_region: FxHashMap<ty::RegionVid, ty::Region<'tcx>>,
     ) -> Generics {
         debug!(
-            "param_env_to_generics(param_env_def_id={:?}, param_env={:?}, \
+            "param_env_to_generics(item_def_id={:?}, param_env={:?}, \
              existing_predicates={:?})",
-            param_env_def_id, param_env, existing_predicates
+            item_def_id, param_env, existing_predicates
         );
+
+        let tcx = self.cx.tcx;
 
         // The `Sized` trait must be handled specially, since we only display it when
         // it is *not* required (i.e., '?Sized')
-        let sized_trait = self.cx.tcx.require_lang_item(LangItem::Sized, None);
+        let sized_trait = tcx.require_lang_item(LangItem::Sized, None);
 
         let mut replacer = RegionReplacer { vid_to_region: &vid_to_region, tcx };
 
-        let orig_bounds: FxHashSet<_> =
-            self.cx.tcx.param_env(param_env_def_id).caller_bounds().iter().collect();
+        let orig_bounds: FxHashSet<_> = tcx.param_env(item_def_id).caller_bounds().iter().collect();
         let clean_where_predicates = param_env
             .caller_bounds()
             .iter()
@@ -477,14 +472,11 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
             .map(|p| p.fold_with(&mut replacer));
 
         let mut generic_params =
-            (tcx.generics_of(param_env_def_id), tcx.explicit_predicates_of(param_env_def_id))
+            (tcx.generics_of(item_def_id), tcx.explicit_predicates_of(item_def_id))
                 .clean(self.cx)
                 .params;
 
-        debug!(
-            "param_env_to_generics({:?}): generic_params={:?}",
-            param_env_def_id, generic_params
-        );
+        debug!("param_env_to_generics({:?}): generic_params={:?}", item_def_id, generic_params);
 
         let mut has_sized = FxHashSet::default();
         let mut ty_to_bounds: FxHashMap<_, FxHashSet<_>> = Default::default();
@@ -516,7 +508,7 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
                         continue;
                     }
 
-                    let mut for_generics = self.extract_for_generics(tcx, orig_p);
+                    let mut for_generics = self.extract_for_generics(orig_p);
 
                     assert!(bounds.len() == 1);
                     let mut b = bounds.pop().expect("bounds were empty");
@@ -545,7 +537,7 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
                                 // that we don't end up with duplicate bounds (e.g., for<'b, 'b>)
                                 for_generics.extend(p.generic_params.clone());
                                 p.generic_params = for_generics.into_iter().collect();
-                                self.is_fn_ty(tcx, &p.trait_)
+                                self.is_fn_ty(&p.trait_)
                             }
                             _ => false,
                         };
@@ -580,7 +572,7 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
                                 } => {
                                     let mut new_trait_path = trait_path.clone();
 
-                                    if self.is_fn_ty(tcx, trait_) && left_name == sym::Output {
+                                    if self.is_fn_ty(trait_) && left_name == sym::Output {
                                         ty_to_fn
                                             .entry(*ty.clone())
                                             .and_modify(|e| *e = (e.0.clone(), Some(rhs.clone())))
@@ -648,13 +640,10 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
                                         .or_default()
                                         .insert(*trait_.clone());
                                 }
-                                _ => panic!(
-                                    "Unexpected trait {:?} for {:?}",
-                                    trait_, param_env_def_id,
-                                ),
+                                _ => panic!("Unexpected trait {:?} for {:?}", trait_, item_def_id),
                             }
                         }
-                        _ => panic!("Unexpected LHS {:?} for {:?}", lhs, param_env_def_id),
+                        _ => panic!("Unexpected LHS {:?} for {:?}", lhs, item_def_id),
                     }
                 }
             };
@@ -741,7 +730,8 @@ impl<'a, 'tcx> AutoTraitFinder<'a, 'tcx> {
         vec.sort_by_cached_key(|x| format!("{:?}", x))
     }
 
-    fn is_fn_ty(&self, tcx: TyCtxt<'_>, ty: &Type) -> bool {
+    fn is_fn_ty(&self, ty: &Type) -> bool {
+        let tcx = self.cx.tcx;
         match ty {
             &Type::ResolvedPath { did, .. } => {
                 did == tcx.require_lang_item(LangItem::Fn, None)

@@ -14,15 +14,14 @@ crate struct BlanketImplFinder<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> BlanketImplFinder<'a, 'tcx> {
-    // FIXME(eddyb) figure out a better way to pass information about
-    // parametrization of `ty` than `param_env_def_id`.
-    crate fn get_blanket_impls(&mut self, ty: Ty<'tcx>, param_env_def_id: DefId) -> Vec<Item> {
-        let param_env = self.cx.tcx.param_env(param_env_def_id);
+    crate fn get_blanket_impls(&mut self, item_def_id: DefId) -> Vec<Item> {
+        let param_env = self.cx.tcx.param_env(item_def_id);
+        let ty = self.cx.tcx.type_of(item_def_id);
 
         debug!("get_blanket_impls({:?})", ty);
         let mut impls = Vec::new();
         for &trait_def_id in self.cx.tcx.all_traits(LOCAL_CRATE).iter() {
-            if !self.cx.renderinfo.access_levels.is_public(trait_def_id)
+            if !self.cx.cache.access_levels.is_public(trait_def_id)
                 || self.cx.generated_synthetics.get(&(ty, trait_def_id)).is_some()
             {
                 continue;
@@ -39,7 +38,7 @@ impl<'a, 'tcx> BlanketImplFinder<'a, 'tcx> {
                         _ => return false,
                     }
 
-                    let substs = infcx.fresh_substs_for_item(DUMMY_SP, param_env_def_id);
+                    let substs = infcx.fresh_substs_for_item(DUMMY_SP, item_def_id);
                     let ty = ty.subst(infcx.tcx, substs);
                     let param_env = param_env.subst(infcx.tcx, substs);
 
