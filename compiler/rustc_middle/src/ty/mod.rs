@@ -2963,7 +2963,10 @@ impl<'tcx> TyCtxt<'tcx> {
                 | DefKind::AnonConst => self.mir_for_ctfe_opt_const_arg(def),
                 // If the caller wants `mir_for_ctfe` of a function they should not be using
                 // `instance_mir`, so we'll assume const fn also wants the optimized version.
-                _ => self.optimized_mir_or_const_arg_mir(def),
+                _ => {
+                    assert_eq!(def.const_param_did, None);
+                    self.optimized_mir(def.did)
+                }
             },
             ty::InstanceDef::VtableShim(..)
             | ty::InstanceDef::ReifyShim(..)
@@ -2998,7 +3001,7 @@ impl<'tcx> TyCtxt<'tcx> {
     /// Returns layout of a generator. Layout might be unavailable if the
     /// generator is tainted by errors.
     pub fn generator_layout(self, def_id: DefId) -> Option<&'tcx GeneratorLayout<'tcx>> {
-        self.optimized_mir(def_id).generator_layout.as_ref()
+        self.optimized_mir(def_id).generator_layout()
     }
 
     /// Given the `DefId` of an impl, returns the `DefId` of the trait it implements.

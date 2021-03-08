@@ -146,6 +146,22 @@ impl<'tcx> MirSource<'tcx> {
     }
 }
 
+#[derive(Clone, TyEncodable, TyDecodable, Debug, HashStable, TypeFoldable)]
+pub struct GeneratorInfo<'tcx> {
+    /// The yield type of the function, if it is a generator.
+    pub yield_ty: Option<Ty<'tcx>>,
+
+    /// Generator drop glue.
+    pub generator_drop: Option<Body<'tcx>>,
+
+    /// The layout of a generator. Produced by the state transformation.
+    pub generator_layout: Option<GeneratorLayout<'tcx>>,
+
+    /// If this is a generator then record the type of source expression that caused this generator
+    /// to be created.
+    pub generator_kind: GeneratorKind,
+}
+
 /// The lowered representation of a single function.
 #[derive(Clone, TyEncodable, TyDecodable, Debug, HashStable, TypeFoldable)]
 pub struct Body<'tcx> {
@@ -166,18 +182,7 @@ pub struct Body<'tcx> {
     /// and used for debuginfo. Indexed by a `SourceScope`.
     pub source_scopes: IndexVec<SourceScope, SourceScopeData<'tcx>>,
 
-    /// The yield type of the function, if it is a generator.
-    pub yield_ty: Option<Ty<'tcx>>,
-
-    /// Generator drop glue.
-    pub generator_drop: Option<Box<Body<'tcx>>>,
-
-    /// The layout of a generator. Produced by the state transformation.
-    pub generator_layout: Option<GeneratorLayout<'tcx>>,
-
-    /// If this is a generator then record the type of source expression that caused this generator
-    /// to be created.
-    pub generator_kind: Option<GeneratorKind>,
+    pub generator: Option<Box<GeneratorInfo<'tcx>>>,
 
     /// Declarations of locals.
     ///
@@ -259,10 +264,14 @@ impl<'tcx> Body<'tcx> {
             source,
             basic_blocks,
             source_scopes,
-            yield_ty: None,
-            generator_drop: None,
-            generator_layout: None,
-            generator_kind,
+            generator: generator_kind.map(|generator_kind| {
+                Box::new(GeneratorInfo {
+                    yield_ty: None,
+                    generator_drop: None,
+                    generator_layout: None,
+                    generator_kind,
+                })
+            }),
             local_decls,
             user_type_annotations,
             arg_count,
@@ -289,16 +298,13 @@ impl<'tcx> Body<'tcx> {
             source: MirSource::item(DefId::local(CRATE_DEF_INDEX)),
             basic_blocks,
             source_scopes: IndexVec::new(),
-            yield_ty: None,
-            generator_drop: None,
-            generator_layout: None,
+            generator: None,
             local_decls: IndexVec::new(),
             user_type_annotations: IndexVec::new(),
             arg_count: 0,
             spread_arg: None,
             span: DUMMY_SP,
             required_consts: Vec::new(),
-            generator_kind: None,
             var_debug_info: Vec::new(),
             is_polymorphic: false,
             predecessor_cache: PredecessorCache::new(),
@@ -479,6 +485,26 @@ impl<'tcx> Body<'tcx> {
     #[inline]
     pub fn dominators(&self) -> Dominators<BasicBlock> {
         dominators(self)
+    }
+
+    #[inline]
+    pub fn yield_ty(&self) -> Option<Ty<'tcx>> {
+        self.generator.as_ref().and_then(|generator| generator.yield_ty)
+    }
+
+    #[inline]
+    pub fn generator_layout(&self) -> Option<&GeneratorLayout<'tcx>> {
+        self.generator.as_ref().and_then(|generator| generator.generator_layout.as_ref())
+    }
+
+    #[inline]
+    pub fn generator_drop(&self) -> Option<&Body<'tcx>> {
+        self.generator.as_ref().and_then(|generator| generator.generator_drop.as_ref())
+    }
+
+    #[inline]
+    pub fn generator_kind(&self) -> Option<GeneratorKind> {
+        self.generator.as_ref().map(|generator| generator.generator_kind)
     }
 }
 
@@ -1657,6 +1683,9 @@ pub struct Place<'tcx> {
     pub projection: &'tcx List<PlaceElem<'tcx>>,
 }
 
+#[cfg(target_arch = "x86_64")]
+static_assert_size!(Place<'_>, 16);
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[derive(TyEncodable, TyDecodable, HashStable)]
 pub enum ProjectionElem<V, T> {
@@ -1955,6 +1984,9 @@ pub enum Operand<'tcx> {
     Constant(Box<Constant<'tcx>>),
 }
 
+#[cfg(target_arch = "x86_64")]
+static_assert_size!(Operand<'_>, 24);
+
 impl<'tcx> Debug for Operand<'tcx> {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
         use self::Operand::*;
@@ -2070,8 +2102,8 @@ pub enum Rvalue<'tcx> {
 
     Cast(CastKind, Operand<'tcx>, Ty<'tcx>),
 
-    BinaryOp(BinOp, Operand<'tcx>, Operand<'tcx>),
-    CheckedBinaryOp(BinOp, Operand<'tcx>, Operand<'tcx>),
+    BinaryOp(BinOp, Box<(Operand<'tcx>, Operand<'tcx>)>),
+    CheckedBinaryOp(BinOp, Box<(Operand<'tcx>, Operand<'tcx>)>),
 
     NullaryOp(NullOp, Ty<'tcx>),
     UnaryOp(UnOp, Operand<'tcx>),
@@ -2089,6 +2121,9 @@ pub enum Rvalue<'tcx> {
     /// away after type-checking and before lowering.
     Aggregate(Box<AggregateKind<'tcx>>, Vec<Operand<'tcx>>),
 }
+
+#[cfg(target_arch = "x86_64")]
+static_assert_size!(Rvalue<'_>, 40);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, TyEncodable, TyDecodable, Hash, HashStable)]
 pub enum CastKind {
@@ -2112,6 +2147,9 @@ pub enum AggregateKind<'tcx> {
     Closure(DefId, SubstsRef<'tcx>),
     Generator(DefId, SubstsRef<'tcx>, hir::Movability),
 }
+
+#[cfg(target_arch = "x86_64")]
+static_assert_size!(AggregateKind<'_>, 48);
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd, Eq, TyEncodable, TyDecodable, Hash, HashStable)]
 pub enum BinOp {
@@ -2189,8 +2227,8 @@ impl<'tcx> Debug for Rvalue<'tcx> {
             Cast(ref kind, ref place, ref ty) => {
                 write!(fmt, "{:?} as {:?} ({:?})", place, ty, kind)
             }
-            BinaryOp(ref op, ref a, ref b) => write!(fmt, "{:?}({:?}, {:?})", op, a, b),
-            CheckedBinaryOp(ref op, ref a, ref b) => {
+            BinaryOp(ref op, box (ref a, ref b)) => write!(fmt, "{:?}({:?}, {:?})", op, a, b),
+            CheckedBinaryOp(ref op, box (ref a, ref b)) => {
                 write!(fmt, "Checked{:?}({:?}, {:?})", op, a, b)
             }
             UnaryOp(ref op, ref a) => write!(fmt, "{:?}({:?})", op, a),

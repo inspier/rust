@@ -51,7 +51,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
 
             PatKind::Constant { value } => Test {
                 span: match_pair.pattern.span,
-                kind: TestKind::Eq { value, ty: match_pair.pattern.ty.clone() },
+                kind: TestKind::Eq { value, ty: match_pair.pattern.ty },
             },
 
             PatKind::Range(range) => {
@@ -335,7 +335,7 @@ impl<'a, 'tcx> Builder<'a, 'tcx> {
         let result = self.temp(bool_ty, source_info.span);
 
         // result = op(left, right)
-        self.cfg.push_assign(block, source_info, result, Rvalue::BinaryOp(op, left, right));
+        self.cfg.push_assign(block, source_info, result, Rvalue::BinaryOp(op, box (left, right)));
 
         // branch based on result
         self.cfg.terminate(

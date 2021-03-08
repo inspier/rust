@@ -241,11 +241,13 @@ macro_rules! make_mir_visitor {
                 body: &$($mutability)? Body<'tcx>,
             ) {
                 let span = body.span;
-                if let Some(yield_ty) = &$($mutability)? body.yield_ty {
-                    self.visit_ty(
-                        yield_ty,
-                        TyContext::YieldTy(SourceInfo::outermost(span))
-                    );
+                if let Some(gen) = &$($mutability)? body.generator {
+                    if let Some(yield_ty) = &$($mutability)? gen.yield_ty {
+                        self.visit_ty(
+                            yield_ty,
+                            TyContext::YieldTy(SourceInfo::outermost(span))
+                        );
+                    }
                 }
 
                 // for best performance, we want to use an iterator rather
@@ -685,8 +687,8 @@ macro_rules! make_mir_visitor {
                         self.visit_ty(ty, TyContext::Location(location));
                     }
 
-                    Rvalue::BinaryOp(_bin_op, lhs, rhs)
-                    | Rvalue::CheckedBinaryOp(_bin_op, lhs, rhs) => {
+                    Rvalue::BinaryOp(_bin_op, box(lhs, rhs))
+                    | Rvalue::CheckedBinaryOp(_bin_op, box(lhs, rhs)) => {
                         self.visit_operand(lhs, location);
                         self.visit_operand(rhs, location);
                     }

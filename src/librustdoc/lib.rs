@@ -45,6 +45,7 @@ extern crate rustc_infer;
 extern crate rustc_interface;
 extern crate rustc_lexer;
 extern crate rustc_lint;
+extern crate rustc_lint_defs;
 extern crate rustc_metadata;
 extern crate rustc_middle;
 extern crate rustc_mir;
@@ -70,6 +71,24 @@ use rustc_session::config::{make_crate_type_option, ErrorOutputType, RustcOptGro
 use rustc_session::getopts;
 use rustc_session::{early_error, early_warn};
 
+/// A macro to create a FxHashMap.
+///
+/// Example:
+///
+/// ```
+/// let letters = map!{"a" => "b", "c" => "d"};
+/// ```
+///
+/// Trailing commas are allowed.
+/// Commas between elements are required (even if the expression is a block).
+macro_rules! map {
+    ($( $key: expr => $val: expr ),* $(,)*) => {{
+        let mut map = ::rustc_data_structures::fx::FxHashMap::default();
+        $( map.insert($key, $val); )*
+        map
+    }}
+}
+
 #[macro_use]
 mod externalfiles;
 
@@ -86,6 +105,7 @@ mod formats;
 // used by the error-index generator, so it needs to be public
 pub mod html;
 mod json;
+crate mod lint;
 mod markdown;
 mod passes;
 mod theme;
@@ -497,6 +517,16 @@ fn opts() -> Vec<RustcOptGroup> {
             o.optopt("", "test-builder", "The rustc-like binary to use as the test builder", "PATH")
         }),
         unstable("check", |o| o.optflag("", "check", "Run rustdoc checks")),
+        unstable("generate-redirect-map", |o| {
+            o.optflag(
+                "",
+                "generate-redirect-map",
+                "Generate JSON file at the top level instead of generating HTML redirection files",
+            )
+        }),
+        unstable("print", |o| {
+            o.optmulti("", "print", "Rustdoc information to print on stdout", "[unversioned-files]")
+        }),
     ]
 }
 

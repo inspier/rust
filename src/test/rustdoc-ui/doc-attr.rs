@@ -1,5 +1,10 @@
 #![crate_type = "lib"]
-#![doc(as_ptr)] //~ ERROR
+#![deny(warnings)]
+#![doc(as_ptr)]
+//~^ ERROR unknown `doc` attribute
+//~^^ WARN
 
-#[doc(as_ptr)] //~ ERROR
+#[doc(as_ptr)]
+//~^ ERROR unknown `doc` attribute
+//~^^ WARN
 pub fn foo() {}

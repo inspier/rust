@@ -263,6 +263,8 @@ crate struct RenderOptions {
     crate document_private: bool,
     /// Document items that have `doc(hidden)`.
     crate document_hidden: bool,
+    /// If `true`, generate a JSON file in the crate folder instead of HTML redirection files.
+    crate generate_redirect_map: bool,
     crate unstable_features: rustc_feature::UnstableFeatures,
 }
 
@@ -310,6 +312,13 @@ impl Options {
                 }
             }
 
+            return Err(0);
+        }
+
+        if matches.opt_strs("print").iter().any(|opt| opt == "unversioned-files") {
+            for file in crate::html::render::FILES_UNVERSIONED.keys() {
+                println!("{}", file);
+            }
             return Err(0);
         }
 
@@ -570,6 +579,7 @@ impl Options {
         let document_private = matches.opt_present("document-private-items");
         let document_hidden = matches.opt_present("document-hidden-items");
         let run_check = matches.opt_present("check");
+        let generate_redirect_map = matches.opt_present("generate-redirect-map");
 
         let (lint_opts, describe_lints, lint_cap) = get_cmd_lint_options(matches, error_format);
 
@@ -627,6 +637,7 @@ impl Options {
                 generate_search_filter,
                 document_private,
                 document_hidden,
+                generate_redirect_map,
                 unstable_features: rustc_feature::UnstableFeatures::from_environment(
                     crate_name.as_deref(),
                 ),
@@ -654,9 +665,8 @@ fn check_deprecated_options(matches: &getopts::Matches, diag: &rustc_errors::Han
             {
                 continue;
             }
-            let mut err =
-                diag.struct_warn(&format!("the '{}' flag is considered deprecated", flag));
-            err.warn(
+            let mut err = diag.struct_warn(&format!("the `{}` flag is deprecated", flag));
+            err.note(
                 "see issue #44136 <https://github.com/rust-lang/rust/issues/44136> \
                  for more information",
             );
