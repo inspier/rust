@@ -557,9 +557,6 @@ declare_features! (
     /// Allows the use of `#[ffi_const]` on foreign functions.
     (active, ffi_const, "1.45.0", Some(58328), None),
 
-    /// No longer treat an unsafe function as an unsafe block.
-    (active, unsafe_block_in_unsafe_fn, "1.45.0", Some(71668), None),
-
     /// Allows `extern "avr-interrupt" fn()` and `extern "avr-non-blocking-interrupt" fn()`.
     (active, abi_avr_interrupt, "1.45.0", Some(69664), None),
 
@@ -643,6 +640,9 @@ declare_features! (
 
     /// Allows associated types in inherent impls.
     (active, inherent_associated_types, "1.52.0", Some(8995), None),
+
+    /// Allows `extern "C-unwind" fn` to enable unwinding across ABI boundaries.
+    (active, c_unwind, "1.52.0", Some(74990), None),
 
     // -------------------------------------------------------------------------
     // feature-group-end: actual feature gates

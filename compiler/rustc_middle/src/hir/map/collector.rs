@@ -116,6 +116,7 @@ impl<'a, 'hir> NodeCollector<'a, 'hir> {
                 modules: _,
                 proc_macros: _,
                 trait_map: _,
+                attrs: _,
             } = *krate;
 
             hash_body(&mut hcx, root_mod_def_path_hash, item, &mut hir_body_nodes)
@@ -220,6 +221,18 @@ impl<'a, 'hir> NodeCollector<'a, 'hir> {
 
             data.signature =
                 Some(self.arena.alloc(Owner { parent: entry.parent, node: entry.node }));
+
+            let dk_parent = self.definitions.def_key(id.owner).parent;
+            if let Some(dk_parent) = dk_parent {
+                let dk_parent = LocalDefId { local_def_index: dk_parent };
+                let dk_parent = self.definitions.local_def_id_to_hir_id(dk_parent);
+                if dk_parent.owner != entry.parent.owner {
+                    panic!(
+                        "Different parents for {:?} => dk_parent={:?} actual={:?}",
+                        id.owner, dk_parent, entry.parent,
+                    )
+                }
+            }
         } else {
             assert_eq!(entry.parent.owner, id.owner);
             insert_vec_map(

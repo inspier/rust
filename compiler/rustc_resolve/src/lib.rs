@@ -156,6 +156,12 @@ impl<'a> ParentScope<'a> {
     }
 }
 
+#[derive(Copy, Debug, Clone)]
+enum ImplTraitContext {
+    Existential,
+    Universal(LocalDefId),
+}
+
 #[derive(Eq)]
 struct BindingError {
     name: Symbol,
@@ -989,8 +995,9 @@ pub struct Resolver<'a> {
     /// Indices of unnamed struct or variant fields with unresolved attributes.
     placeholder_field_indices: FxHashMap<NodeId, usize>,
     /// When collecting definitions from an AST fragment produced by a macro invocation `ExpnId`
-    /// we know what parent node that fragment should be attached to thanks to this table.
-    invocation_parents: FxHashMap<ExpnId, LocalDefId>,
+    /// we know what parent node that fragment should be attached to thanks to this table,
+    /// and how the `impl Trait` fragments were introduced.
+    invocation_parents: FxHashMap<ExpnId, (LocalDefId, ImplTraitContext)>,
 
     next_disambiguator: FxHashMap<(LocalDefId, DefPathData), u32>,
     /// Some way to know that we are in a *trait* impl in `visit_assoc_item`.
@@ -1205,7 +1212,7 @@ impl<'a> Resolver<'a> {
         node_id_to_def_id.insert(CRATE_NODE_ID, root);
 
         let mut invocation_parents = FxHashMap::default();
-        invocation_parents.insert(ExpnId::root(), root);
+        invocation_parents.insert(ExpnId::root(), (root, ImplTraitContext::Existential));
 
         let mut extern_prelude: FxHashMap<Ident, ExternPreludeEntry<'_>> = session
             .opts
@@ -2433,8 +2440,10 @@ impl<'a> Resolver<'a> {
                                     Applicability::MaybeIncorrect,
                                 )),
                             )
-                        } else {
+                        } else if self.session.edition() == Edition::Edition2015 {
                             (format!("maybe a missing crate `{}`?", ident), None)
+                        } else {
+                            (format!("could not find `{}` in the crate root", ident), None)
                         }
                     } else if i == 0 {
                         if ident
@@ -2450,10 +2459,16 @@ impl<'a> Resolver<'a> {
                         }
                     } else {
                         let parent = path[i - 1].ident.name;
-                        let parent = if parent == kw::PathRoot {
-                            "crate root".to_owned()
-                        } else {
-                            format!("`{}`", parent)
+                        let parent = match parent {
+                            // ::foo is mounted at the crate root for 2015, and is the extern
+                            // prelude for 2018+
+                            kw::PathRoot if self.session.edition() > Edition::Edition2015 => {
+                                "the list of imported crates".to_owned()
+                            }
+                            kw::PathRoot | kw::Crate => "the crate root".to_owned(),
+                            _ => {
+                                format!("`{}`", parent)
+                            }
                         };
 
                         let mut msg = format!("could not find `{}` in {}", ident, parent);

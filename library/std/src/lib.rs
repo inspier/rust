@@ -234,6 +234,7 @@
 #![feature(box_syntax)]
 #![feature(c_variadic)]
 #![feature(cfg_accessible)]
+#![cfg_attr(not(bootstrap), feature(cfg_eval))]
 #![feature(cfg_target_has_atomic)]
 #![feature(cfg_target_thread_local)]
 #![feature(char_error_internals)]
@@ -301,6 +302,7 @@
 #![feature(panic_internals)]
 #![feature(panic_unwind)]
 #![feature(pin_static_ref)]
+#![feature(prelude_2021)]
 #![feature(prelude_import)]
 #![feature(ptr_internals)]
 #![feature(raw)]
@@ -326,7 +328,7 @@
 #![feature(try_blocks)]
 #![feature(try_reserve)]
 #![feature(unboxed_closures)]
-#![feature(unsafe_block_in_unsafe_fn)]
+#![cfg_attr(bootstrap, feature(unsafe_block_in_unsafe_fn))]
 #![feature(unsafe_cell_raw_get)]
 #![feature(unwind_attributes)]
 #![feature(vec_into_raw_parts)]
@@ -395,7 +397,11 @@ pub use alloc_crate::vec;
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use core::any;
 #[stable(feature = "simd_arch", since = "1.27.0")]
-#[doc(no_inline)]
+// The `no_inline`-attribute is required to make the documentation of all
+// targets available.
+// See https://github.com/rust-lang/rust/pull/57808#issuecomment-457390549 for
+// more information.
+#[doc(no_inline)] // Note (#82861): required for correct documentation
 pub use core::arch;
 #[stable(feature = "core_array", since = "1.36.0")]
 pub use core::array;

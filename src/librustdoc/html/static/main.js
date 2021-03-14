@@ -1847,13 +1847,18 @@ function defocusSearchBar() {
                 });
                 currentIndex += 1;
 
-                // an array of [(Number) item type,
-                //              (String) name,
-                //              (String) full path or empty string for previous path,
-                //              (String) description,
-                //              (Number | null) the parent path index to `paths`]
-                //              (Object | null) the type of the function (if any)
-                var items = rawSearchIndex[crate].i;
+                // an array of (Number) item types
+                var itemTypes = rawSearchIndex[crate].t;
+                // an array of (String) item names
+                var itemNames = rawSearchIndex[crate].n;
+                // an array of (String) full paths (or empty string for previous path)
+                var itemPaths = rawSearchIndex[crate].q;
+                // an array of (String) descriptions
+                var itemDescs = rawSearchIndex[crate].d;
+                // an array of (Number) the parent path index + 1 to `paths`, or 0 if none
+                var itemParentIdxs = rawSearchIndex[crate].i;
+                // an array of (Object | null) the type of the function, if any
+                var itemFunctionSearchTypes = rawSearchIndex[crate].f;
                 // an array of [(Number) item type,
                 //              (String) name]
                 var paths = rawSearchIndex[crate].p;
@@ -1867,28 +1872,24 @@ function defocusSearchBar() {
                     paths[i] = {ty: paths[i][0], name: paths[i][1]};
                 }
 
-                // convert `items` into an object form, and construct word indices.
+                // convert `item*` into an object form, and construct word indices.
                 //
                 // before any analysis is performed lets gather the search terms to
                 // search against apart from the rest of the data.  This is a quick
                 // operation that is cached for the life of the page state so that
                 // all other search operations have access to this cached data for
                 // faster analysis operations
-                len = items.length;
+                len = itemTypes.length;
                 var lastPath = "";
                 for (i = 0; i < len; ++i) {
-                    var rawRow = items[i];
-                    if (!rawRow[2]) {
-                        rawRow[2] = lastPath;
-                    }
                     var row = {
                         crate: crate,
-                        ty: rawRow[0],
-                        name: rawRow[1],
-                        path: rawRow[2],
-                        desc: rawRow[3],
-                        parent: paths[rawRow[4]],
-                        type: rawRow[5],
+                        ty: itemTypes[i],
+                        name: itemNames[i],
+                        path: itemPaths[i] ? itemPaths[i] : lastPath,
+                        desc: itemDescs[i],
+                        parent: itemParentIdxs[i] > 0 ? paths[itemParentIdxs[i] - 1] : undefined,
+                        type: itemFunctionSearchTypes[i],
                     };
                     searchIndex.push(row);
                     if (typeof row.name === "string") {
@@ -2188,7 +2189,7 @@ function defocusSearchBar() {
             return "+";
         }
         // button will collapse the section
-        // note that this text is also set in the HTML template in render.rs
+        // note that this text is also set in the HTML template in ../render/mod.rs
         return "\u2212"; // "\u2212" is "−" minus sign
     }
 
@@ -2831,17 +2832,10 @@ function defocusSearchBar() {
         });
     }
 
-    function enableSearchInput() {
-        if (search_input) {
-            search_input.removeAttribute('disabled');
-        }
-    }
-
     function addSearchOptions(crates) {
         var elem = document.getElementById("crate-search");
 
         if (!elem) {
-            enableSearchInput();
             return;
         }
         var savedCrate = getSettingValue("saved-filter-crate");
@@ -2860,7 +2854,6 @@ function defocusSearchBar() {
                 elem.value = savedCrate;
             }
         }
-        enableSearchInput();
     };
 
     function buildHelperPopup() {
@@ -2952,10 +2945,14 @@ function defocusSearchBar() {
         search_input.addEventListener("blur", function() {
             search_input.placeholder = search_input.origPlaceholder;
         });
-        enableSearchInput();
+        search_input.removeAttribute('disabled');
 
         var crateSearchDropDown = document.getElementById("crate-search");
-        crateSearchDropDown.addEventListener("focus", loadSearch);
+        // `crateSearchDropDown` can be null in case there is only crate because in that case, the
+        // crate filter dropdown is removed.
+        if (crateSearchDropDown) {
+            crateSearchDropDown.addEventListener("focus", loadSearch);
+        }
         var params = getQueryStringParams();
         if (params.search !== undefined) {
             loadSearch();

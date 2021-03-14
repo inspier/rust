@@ -57,7 +57,6 @@ crate struct Crate {
     // These are later on moved into `CACHEKEY`, leaving the map empty.
     // Only here so that they can be filtered through the rustdoc passes.
     crate external_traits: Rc<RefCell<FxHashMap<DefId, TraitWithExtraInfo>>>,
-    crate masked_crates: FxHashSet<CrateNum>,
     crate collapsed: bool,
 }
 
@@ -93,7 +92,7 @@ crate struct Item {
 }
 
 // `Item` is used a lot. Make sure it doesn't unintentionally get bigger.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_pointer_width = "64"))]
 rustc_data_structures::static_assert_size!(Item, 48);
 
 impl fmt::Debug for Item {

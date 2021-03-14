@@ -42,6 +42,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str;
 use std::string::ToString;
+use std::sync::mpsc::Receiver;
 
 use itertools::Itertools;
 use rustc_ast_pretty::pprust;
@@ -81,6 +82,7 @@ crate fn ensure_trailing_slash(v: &str) -> impl fmt::Display + '_ {
     })
 }
 
+/// Shared mutable state used in [`Context`] and elsewhere.
 crate struct SharedContext<'tcx> {
     crate tcx: TyCtxt<'tcx>,
     /// The path to the crate root source minus the file name.
@@ -96,16 +98,16 @@ crate struct SharedContext<'tcx> {
     /// The local file sources we've emitted and their respective url-paths.
     crate local_sources: FxHashMap<PathBuf, String>,
     /// Whether the collapsed pass ran
-    crate collapsed: bool,
+    collapsed: bool,
     /// The base-URL of the issue tracker for when an item has been tagged with
     /// an issue number.
-    crate issue_tracker_base_url: Option<String>,
+    issue_tracker_base_url: Option<String>,
     /// The directories that have already been created in this doc run. Used to reduce the number
     /// of spurious `create_dir_all` calls.
-    crate created_dirs: RefCell<FxHashSet<PathBuf>>,
+    created_dirs: RefCell<FxHashSet<PathBuf>>,
     /// This flag indicates whether listings of modules (in the side bar and documentation itself)
     /// should be ordered alphabetically or in order of appearance (in the source code).
-    crate sort_modules_alphabetically: bool,
+    sort_modules_alphabetically: bool,
     /// Additional CSS files to be added to the generated docs.
     crate style_files: Vec<StylePath>,
     /// Suffix to be added on resource files (if suffix is "-v2" then "light.css" becomes
@@ -118,8 +120,16 @@ crate struct SharedContext<'tcx> {
     crate fs: DocFS,
     /// The default edition used to parse doctests.
     crate edition: Edition,
-    crate codes: ErrorCodes,
+    codes: ErrorCodes,
     playground: Option<markdown::Playground>,
+    all: RefCell<AllTypes>,
+    /// Storage for the errors produced while generating documentation so they
+    /// can be printed together at the end.
+    errors: Receiver<String>,
+    /// `None` by default, depends on the `generate-redirect-map` option flag. If this field is set
+    /// to `Some(...)`, it'll store redirections and then generate a JSON file at the top level of
+    /// the crate.
+    redirections: Option<RefCell<FxHashMap<String, String>>>,
 }
 
 impl SharedContext<'_> {
@@ -154,23 +164,6 @@ crate struct IndexItem {
     crate parent: Option<DefId>,
     crate parent_idx: Option<usize>,
     crate search_type: Option<IndexItemFunctionType>,
-}
-
-impl Serialize for IndexItem {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        assert_eq!(
-            self.parent.is_some(),
-            self.parent_idx.is_some(),
-            "`{}` is missing idx",
-            self.name
-        );
-
-        (self.ty, &self.name, &self.path, &self.desc, self.parent_idx, &self.search_type)
-            .serialize(serializer)
-    }
 }
 
 /// A type used for the search index.
@@ -276,11 +269,7 @@ impl Serialize for TypeWithKind {
     where
         S: Serializer,
     {
-        let mut seq = serializer.serialize_seq(None)?;
-        seq.serialize_element(&self.ty.name)?;
-        let x: ItemType = self.kind.into();
-        seq.serialize_element(&x)?;
-        seq.end()
+        (&self.ty.name, ItemType::from(self.kind)).serialize(serializer)
     }
 }
 

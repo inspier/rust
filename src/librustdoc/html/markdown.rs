@@ -1093,6 +1093,7 @@ fn markdown_summary_with_limit(md: &str, length_limit: usize) -> (String, bool) 
                 Tag::Emphasis => s.push_str("</em>"),
                 Tag::Strong => s.push_str("</strong>"),
                 Tag::Paragraph => break,
+                Tag::Heading(..) => break,
                 _ => {}
             },
             Event::HardBreak | Event::SoftBreak => {
@@ -1371,10 +1372,6 @@ impl IdMap {
         for id in ids {
             let _ = self.derive(id);
         }
-    }
-
-    crate fn reset(&mut self) {
-        self.map = init_id_map();
     }
 
     crate fn derive<S: AsRef<str> + ToString>(&mut self, candidate: S) -> String {
