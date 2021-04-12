@@ -1,5 +1,7 @@
 use super::{get_span_of_entire_for_loop, SINGLE_ELEMENT_LOOP};
-use crate::utils::{indent_of, single_segment_path, snippet, span_lint_and_sugg};
+use clippy_utils::diagnostics::span_lint_and_sugg;
+use clippy_utils::single_segment_path;
+use clippy_utils::source::{indent_of, snippet};
 use if_chain::if_chain;
 use rustc_errors::Applicability;
 use rustc_hir::{BorrowKind, Expr, ExprKind, Pat, PatKind};
@@ -13,12 +15,12 @@ pub(super) fn check<'tcx>(
     expr: &'tcx Expr<'_>,
 ) {
     if_chain! {
-        if let ExprKind::AddrOf(BorrowKind::Ref, _, ref arg_expr) = arg.kind;
+        if let ExprKind::AddrOf(BorrowKind::Ref, _, arg_expr) = arg.kind;
         if let PatKind::Binding(.., target, _) = pat.kind;
         if let ExprKind::Array([arg_expression]) = arg_expr.kind;
         if let ExprKind::Path(ref list_item) = arg_expression.kind;
         if let Some(list_item_name) = single_segment_path(list_item).map(|ps| ps.ident.name);
-        if let ExprKind::Block(ref block, _) = body.kind;
+        if let ExprKind::Block(block, _) = body.kind;
         if !block.stmts.is_empty();
 
         then {

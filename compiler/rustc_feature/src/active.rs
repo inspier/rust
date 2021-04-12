@@ -216,6 +216,10 @@ declare_features! (
     /// Renamed from `optin_builtin_traits`.
     (active, auto_traits, "1.50.0", Some(13231), None),
 
+    /// Allows `#[doc(notable_trait)]`.
+    /// Renamed from `doc_spotlight`.
+    (active, doc_notable_trait, "1.52.0", Some(45040), None),
+
     // no-tracking-issue-end
 
     // -------------------------------------------------------------------------
@@ -253,9 +257,6 @@ declare_features! (
     // -------------------------------------------------------------------------
     // feature-group-start: actual feature gates
     // -------------------------------------------------------------------------
-
-    /// Allows using the `#[link_args]` attribute.
-    (active, link_args, "1.0.0", Some(29596), None),
 
     /// Allows defining identifiers beyond ASCII.
     (active, non_ascii_idents, "1.0.0", Some(55467), None),
@@ -374,9 +375,6 @@ declare_features! (
     /// Allows `#[doc(masked)]`.
     (active, doc_masked, "1.21.0", Some(44027), None),
 
-    /// Allows `#[doc(spotlight)]`.
-    (active, doc_spotlight, "1.22.0", Some(45040), None),
-
     /// Allows `#[doc(include = "some-file")]`.
     (active, external_doc, "1.22.0", Some(44732), None),
 
@@ -487,9 +485,6 @@ declare_features! (
 
     /// Allows `impl Trait` to be used inside type aliases (RFC 2515).
     (active, type_alias_impl_trait, "1.38.0", Some(63063), None),
-
-    /// Allows the use of or-patterns (e.g., `0 | 1`).
-    (active, or_patterns, "1.38.0", Some(54883), None),
 
     /// Allows the definition of `const extern fn` and `const unsafe extern fn`.
     (active, const_extern_fn, "1.40.0", Some(64926), None),
@@ -614,7 +609,7 @@ declare_features! (
     /// Allows arbitrary expressions in key-value attributes at parse time.
     (active, extended_key_value_attributes, "1.50.0", Some(78835), None),
 
-    /// `:pat2018` and `:pat2021` macro matchers.
+    /// `:pat2015` and `:pat2021` macro matchers.
     (active, edition_macro_pats, "1.51.0", Some(54883), None),
 
     /// Allows const generics to have default values (e.g. `struct Foo<const N: usize = 3>(...);`).
@@ -646,6 +641,12 @@ declare_features! (
 
     /// Allows `extern "C-unwind" fn` to enable unwinding across ABI boundaries.
     (active, c_unwind, "1.52.0", Some(74990), None),
+
+    /// Allows using `#[repr(align(...))]` on function items
+    (active, fn_align, "1.53.0", Some(82232), None),
+
+    /// Allows `extern "wasm" fn`
+    (active, wasm_abi, "1.53.0", Some(83788), None),
 
     // -------------------------------------------------------------------------
     // feature-group-end: actual feature gates

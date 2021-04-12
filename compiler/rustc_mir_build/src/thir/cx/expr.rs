@@ -503,8 +503,12 @@ impl<'thir, 'tcx> Cx<'thir, 'tcx> {
                             in_expr: self.mirror_expr(in_expr),
                             out_expr: out_expr.as_ref().map(|expr| self.mirror_expr(expr)),
                         },
-                        hir::InlineAsmOperand::Const { ref expr } => {
-                            InlineAsmOperand::Const { expr: self.mirror_expr(expr) }
+                        hir::InlineAsmOperand::Const { ref anon_const } => {
+                            let anon_const_def_id = self.tcx.hir().local_def_id(anon_const.hir_id);
+                            let value = ty::Const::from_anon_const(self.tcx, anon_const_def_id);
+                            let span = self.tcx.hir().span(anon_const.hir_id);
+
+                            InlineAsmOperand::Const { value, span }
                         }
                         hir::InlineAsmOperand::Sym { ref expr } => {
                             let qpath = match expr.kind {
@@ -707,11 +711,11 @@ impl<'thir, 'tcx> Cx<'thir, 'tcx> {
                                 // and not the beginning of discriminants (which is always `0`)
                                 let substs = InternalSubsts::identity_for_item(self.tcx(), did);
                                 let lhs = mk_const(self.tcx().mk_const(ty::Const {
-                                    val: ty::ConstKind::Unevaluated(
-                                        ty::WithOptConstParam::unknown(did),
+                                    val: ty::ConstKind::Unevaluated(ty::Unevaluated {
+                                        def: ty::WithOptConstParam::unknown(did),
                                         substs,
-                                        None,
-                                    ),
+                                        promoted: None,
+                                    }),
                                     ty: var_ty,
                                 }));
                                 let bin =
@@ -905,11 +909,11 @@ impl<'thir, 'tcx> Cx<'thir, 'tcx> {
                 debug!("convert_path_expr: (const) user_ty={:?}", user_ty);
                 ExprKind::Literal {
                     literal: self.tcx.mk_const(ty::Const {
-                        val: ty::ConstKind::Unevaluated(
-                            ty::WithOptConstParam::unknown(def_id),
+                        val: ty::ConstKind::Unevaluated(ty::Unevaluated {
+                            def: ty::WithOptConstParam::unknown(def_id),
                             substs,
-                            None,
-                        ),
+                            promoted: None,
+                        }),
                         ty: self.typeck_results().node_type(expr.hir_id),
                     }),
                     user_ty,
@@ -1111,7 +1115,10 @@ impl<'thir, 'tcx> Cx<'thir, 'tcx> {
     }
 
     /// Converts a list of named fields (i.e., for struct-like struct/enum ADTs) into FieldExpr.
-    fn field_refs(&mut self, fields: &'tcx [hir::Field<'tcx>]) -> &'thir [FieldExpr<'thir, 'tcx>] {
+    fn field_refs(
+        &mut self,
+        fields: &'tcx [hir::ExprField<'tcx>],
+    ) -> &'thir [FieldExpr<'thir, 'tcx>] {
         self.arena.alloc_from_iter(fields.iter().map(|field| FieldExpr {
             name: Field::new(self.tcx.field_index(field.hir_id, self.typeck_results)),
             expr: self.mirror_expr(field.expr),

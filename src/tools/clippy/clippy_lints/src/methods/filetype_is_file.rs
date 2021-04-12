@@ -1,4 +1,6 @@
-use crate::utils::{get_parent_expr, match_type, paths, span_lint_and_help};
+use clippy_utils::diagnostics::span_lint_and_help;
+use clippy_utils::ty::match_type;
+use clippy_utils::{get_parent_expr, paths};
 use if_chain::if_chain;
 use rustc_hir as hir;
 use rustc_lint::LateContext;
@@ -6,8 +8,8 @@ use rustc_span::source_map::Span;
 
 use super::FILETYPE_IS_FILE;
 
-pub(super) fn check(cx: &LateContext<'_>, expr: &hir::Expr<'_>, args: &[hir::Expr<'_>]) {
-    let ty = cx.typeck_results().expr_ty(&args[0]);
+pub(super) fn check(cx: &LateContext<'_>, expr: &hir::Expr<'_>, recv: &hir::Expr<'_>) {
+    let ty = cx.typeck_results().expr_ty(recv);
 
     if !match_type(cx, ty, &paths::FILE_TYPE) {
         return;

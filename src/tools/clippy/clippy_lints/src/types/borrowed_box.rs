@@ -1,13 +1,13 @@
+use clippy_utils::diagnostics::span_lint_and_sugg;
+use clippy_utils::source::snippet;
+use clippy_utils::{match_path, paths};
+use if_chain::if_chain;
 use rustc_errors::Applicability;
 use rustc_hir::{
     self as hir, GenericArg, GenericBounds, GenericParamKind, HirId, Lifetime, MutTy, Mutability, Node, QPath,
     SyntheticTyParamKind, TyKind,
 };
 use rustc_lint::LateContext;
-
-use if_chain::if_chain;
-
-use crate::utils::{match_path, paths, snippet, span_lint_and_sugg};
 
 use super::BORROWED_BOX;
 
@@ -19,9 +19,9 @@ pub(super) fn check(cx: &LateContext<'_>, hir_ty: &hir::Ty<'_>, lt: &Lifetime, m
             if_chain! {
                 if let Some(def_id) = def.opt_def_id();
                 if Some(def_id) == cx.tcx.lang_items().owned_box();
-                if let QPath::Resolved(None, ref path) = *qpath;
+                if let QPath::Resolved(None, path) = *qpath;
                 if let [ref bx] = *path.segments;
-                if let Some(ref params) = bx.args;
+                if let Some(params) = bx.args;
                 if !params.parenthesized;
                 if let Some(inner) = params.args.iter().find_map(|arg| match arg {
                     GenericArg::Type(ty) => Some(ty),
@@ -50,7 +50,7 @@ pub(super) fn check(cx: &LateContext<'_>, hir_ty: &hir::Ty<'_>, lt: &Lifetime, m
                     // Originally reported as the issue #3128.
                     let inner_snippet = snippet(cx, inner.span, "..");
                     let suggestion = match &inner.kind {
-                        TyKind::TraitObject(bounds, lt_bound) if bounds.len() > 1 || !lt_bound.is_elided() => {
+                        TyKind::TraitObject(bounds, lt_bound, _) if bounds.len() > 1 || !lt_bound.is_elided() => {
                             format!("&{}({})", ltopt, &inner_snippet)
                         },
                         TyKind::Path(qpath)
@@ -86,11 +86,11 @@ pub(super) fn check(cx: &LateContext<'_>, hir_ty: &hir::Ty<'_>, lt: &Lifetime, m
 // Returns true if given type is `Any` trait.
 fn is_any_trait(t: &hir::Ty<'_>) -> bool {
     if_chain! {
-        if let TyKind::TraitObject(ref traits, _) = t.kind;
+        if let TyKind::TraitObject(traits, ..) = t.kind;
         if !traits.is_empty();
         // Only Send/Sync can be used as additional traits, so it is enough to
         // check only the first trait.
-        if match_path(&traits[0].trait_ref.path, &paths::ANY_TRAIT);
+        if match_path(traits[0].trait_ref.path, &paths::ANY_TRAIT);
         then {
             return true;
         }

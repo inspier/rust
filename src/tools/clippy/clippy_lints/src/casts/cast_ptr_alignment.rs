@@ -1,17 +1,16 @@
+use clippy_utils::diagnostics::span_lint;
+use clippy_utils::is_hir_ty_cfg_dependant;
+use if_chain::if_chain;
 use rustc_hir::{Expr, ExprKind, GenericArg};
 use rustc_lint::LateContext;
 use rustc_middle::ty::{self, Ty};
 use rustc_span::symbol::sym;
 use rustc_target::abi::LayoutOf;
 
-use if_chain::if_chain;
-
-use crate::utils::{is_hir_ty_cfg_dependant, span_lint};
-
 use super::CAST_PTR_ALIGNMENT;
 
 pub(super) fn check(cx: &LateContext<'tcx>, expr: &'tcx Expr<'_>) {
-    if let ExprKind::Cast(ref cast_expr, cast_to) = expr.kind {
+    if let ExprKind::Cast(cast_expr, cast_to) = expr.kind {
         if is_hir_ty_cfg_dependant(cx, cast_to) {
             return;
         }

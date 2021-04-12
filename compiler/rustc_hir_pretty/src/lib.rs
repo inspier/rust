@@ -1,4 +1,4 @@
-#![feature(or_patterns)]
+#![cfg_attr(bootstrap, feature(or_patterns))]
 #![recursion_limit = "256"]
 
 use rustc_ast as ast;
@@ -114,7 +114,7 @@ impl<'a> State<'a> {
             Node::Lifetime(a) => self.print_lifetime(&a),
             Node::Visibility(a) => self.print_visibility(&a),
             Node::GenericParam(_) => panic!("cannot print Node::GenericParam"),
-            Node::Field(_) => panic!("cannot print StructField"),
+            Node::Field(_) => panic!("cannot print Node::Field"),
             // These cases do not carry enough information in the
             // `hir_map` to reconstruct their full structure for pretty
             // printing.
@@ -170,7 +170,7 @@ pub fn print_crate<'a>(
     // When printing the AST, we sometimes need to inject `#[no_std]` here.
     // Since you can't compile the HIR, it's not necessary.
 
-    s.print_mod(&krate.item.module, s.attrs(hir::CRATE_HIR_ID));
+    s.print_mod(&krate.item, s.attrs(hir::CRATE_HIR_ID));
     s.print_remaining_comments();
     s.s.eof()
 }
@@ -219,10 +219,6 @@ pub fn generic_params_to_string(generic_params: &[GenericParam<'_>]) -> String {
 
 pub fn bounds_to_string<'b>(bounds: impl IntoIterator<Item = &'b hir::GenericBound<'b>>) -> String {
     to_string(NO_ANN, |s| s.print_bounds("", bounds))
-}
-
-pub fn param_to_string(arg: &hir::Param<'_>) -> String {
-    to_string(NO_ANN, |s| s.print_param(arg))
 }
 
 pub fn ty_to_string(ty: &hir::Ty<'_>) -> String {
@@ -410,7 +406,10 @@ impl<'a> State<'a> {
             }
             hir::TyKind::OpaqueDef(..) => self.s.word("/*impl Trait*/"),
             hir::TyKind::Path(ref qpath) => self.print_qpath(qpath, false),
-            hir::TyKind::TraitObject(bounds, ref lifetime) => {
+            hir::TyKind::TraitObject(bounds, ref lifetime, syntax) => {
+                if syntax == ast::TraitObjectSyntax::Dyn {
+                    self.word_space("dyn");
+                }
                 let mut first = true;
                 for bound in bounds {
                     if first {
@@ -1207,7 +1206,7 @@ impl<'a> State<'a> {
     fn print_expr_struct(
         &mut self,
         qpath: &hir::QPath<'_>,
-        fields: &[hir::Field<'_>],
+        fields: &[hir::ExprField<'_>],
         wth: &Option<&hir::Expr<'_>>,
     ) {
         self.print_qpath(qpath, true);
@@ -1571,10 +1570,10 @@ impl<'a> State<'a> {
                                 None => s.word("_"),
                             }
                         }
-                        hir::InlineAsmOperand::Const { expr } => {
+                        hir::InlineAsmOperand::Const { anon_const } => {
                             s.word("const");
                             s.space();
-                            s.print_expr(expr);
+                            s.print_anon_const(anon_const);
                         }
                         hir::InlineAsmOperand::Sym { expr } => {
                             s.word("sym");
@@ -1698,19 +1697,8 @@ impl<'a> State<'a> {
         }
     }
 
-    pub fn print_usize(&mut self, i: usize) {
-        self.s.word(i.to_string())
-    }
-
     pub fn print_name(&mut self, name: Symbol) {
         self.print_ident(Ident::with_dummy_span(name))
-    }
-
-    pub fn print_for_decl(&mut self, loc: &hir::Local<'_>, coll: &hir::Expr<'_>) {
-        self.print_local_decl(loc);
-        self.s.space();
-        self.word_space("in");
-        self.print_expr(coll)
     }
 
     pub fn print_path(&mut self, path: &hir::Path<'_>, colons_before_params: bool) {
@@ -2263,8 +2251,10 @@ impl<'a> State<'a> {
             GenericParamKind::Const { ref ty, ref default } => {
                 self.word_space(":");
                 self.print_type(ty);
-                if let Some(ref _default) = default {
-                    // FIXME(const_generics_defaults): print the `default` value here
+                if let Some(ref default) = default {
+                    self.s.space();
+                    self.word_space("=");
+                    self.print_anon_const(&default)
                 }
             }
         }
@@ -2422,24 +2412,6 @@ impl<'a> State<'a> {
         }
         while let Some(ref cmnt) = self.next_comment() {
             self.print_comment(cmnt)
-        }
-    }
-
-    pub fn print_opt_abi_and_extern_if_nondefault(&mut self, opt_abi: Option<Abi>) {
-        match opt_abi {
-            Some(Abi::Rust) => {}
-            Some(abi) => {
-                self.word_nbsp("extern");
-                self.word_nbsp(abi.to_string())
-            }
-            None => {}
-        }
-    }
-
-    pub fn print_extern_opt_abi(&mut self, opt_abi: Option<Abi>) {
-        if let Some(abi) = opt_abi {
-            self.word_nbsp("extern");
-            self.word_nbsp(abi.to_string())
         }
     }
 

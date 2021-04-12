@@ -18,6 +18,7 @@ use rustc_target::spec::abi;
 use smallvec::{smallvec, SmallVec};
 use tracing::debug;
 
+use std::iter;
 use std::mem;
 
 pub(super) struct ItemLowerer<'a, 'lowering, 'hir> {
@@ -206,7 +207,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
             UseTreeKind::Glob => {}
             UseTreeKind::Simple(_, id1, id2) => {
                 for (_, &id) in
-                    self.expect_full_res_from_use(base_id).skip(1).zip([id1, id2].iter())
+                    iter::zip(self.expect_full_res_from_use(base_id).skip(1), &[id1, id2])
                 {
                     vec.push(id);
                 }
@@ -537,7 +538,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
                 // won't be dealing with macros in the rest of the compiler.
                 // Essentially a single `use` which imports two names is desugared into
                 // two imports.
-                for (res, &new_node_id) in resolutions.zip([id1, id2].iter()) {
+                for (res, &new_node_id) in iter::zip(resolutions, &[id1, id2]) {
                     let ident = *ident;
                     let mut path = path.clone();
                     for seg in &mut path.segments {
@@ -769,7 +770,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
         match *vdata {
             VariantData::Struct(ref fields, recovered) => hir::VariantData::Struct(
                 self.arena
-                    .alloc_from_iter(fields.iter().enumerate().map(|f| self.lower_struct_field(f))),
+                    .alloc_from_iter(fields.iter().enumerate().map(|f| self.lower_field_def(f))),
                 recovered,
             ),
             VariantData::Tuple(ref fields, id) => {
@@ -777,7 +778,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
                 self.alias_attrs(ctor_id, parent_id);
                 hir::VariantData::Tuple(
                     self.arena.alloc_from_iter(
-                        fields.iter().enumerate().map(|f| self.lower_struct_field(f)),
+                        fields.iter().enumerate().map(|f| self.lower_field_def(f)),
                     ),
                     ctor_id,
                 )
@@ -790,7 +791,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
         }
     }
 
-    fn lower_struct_field(&mut self, (index, f): (usize, &StructField)) -> hir::StructField<'hir> {
+    fn lower_field_def(&mut self, (index, f): (usize, &FieldDef)) -> hir::FieldDef<'hir> {
         let ty = if let TyKind::Path(ref qself, ref path) = f.ty.kind {
             let t = self.lower_path_ty(
                 &f.ty,
@@ -805,7 +806,7 @@ impl<'hir> LoweringContext<'_, 'hir> {
         };
         let hir_id = self.lower_node_id(f.id);
         self.lower_attrs(hir_id, &f.attrs);
-        hir::StructField {
+        hir::FieldDef {
             span: f.span,
             hir_id,
             ident: match f.ident {

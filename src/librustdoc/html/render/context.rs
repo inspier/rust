@@ -1,25 +1,22 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{channel, Receiver};
 
-use rustc_data_structures::fx::FxHashMap;
+use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_middle::ty::TyCtxt;
 use rustc_session::Session;
 use rustc_span::edition::Edition;
 use rustc_span::source_map::FileName;
-use rustc_span::symbol::sym;
+use rustc_span::{symbol::sym, Symbol};
 
 use super::cache::{build_index, ExternalLocation};
 use super::print_item::{full_path, item_path, print_item};
 use super::write_shared::write_shared;
-use super::{
-    print_sidebar, settings, AllTypes, NameDoc, SharedContext, StylePath, BASIC_KEYWORDS,
-    CURRENT_DEPTH, INITIAL_IDS,
-};
+use super::{print_sidebar, settings, AllTypes, NameDoc, StylePath, BASIC_KEYWORDS, CURRENT_DEPTH};
 
 use crate::clean::{self, AttributesExt};
 use crate::config::RenderOptions;
@@ -78,18 +75,75 @@ crate struct Context<'tcx> {
 #[cfg(target_arch = "x86_64")]
 rustc_data_structures::static_assert_size!(Context<'_>, 152);
 
-impl<'tcx> Context<'tcx> {
-    pub(super) fn path(&self, filename: &str) -> PathBuf {
-        // We use splitn vs Path::extension here because we might get a filename
-        // like `style.min.css` and we want to process that into
-        // `style-suffix.min.css`.  Path::extension would just return `css`
-        // which would result in `style.min-suffix.css` which isn't what we
-        // want.
-        let (base, ext) = filename.split_once('.').unwrap();
-        let filename = format!("{}{}.{}", base, self.shared.resource_suffix, ext);
-        self.dst.join(&filename)
+/// Shared mutable state used in [`Context`] and elsewhere.
+crate struct SharedContext<'tcx> {
+    crate tcx: TyCtxt<'tcx>,
+    /// The path to the crate root source minus the file name.
+    /// Used for simplifying paths to the highlighted source code files.
+    crate src_root: PathBuf,
+    /// This describes the layout of each page, and is not modified after
+    /// creation of the context (contains info like the favicon and added html).
+    crate layout: layout::Layout,
+    /// This flag indicates whether `[src]` links should be generated or not. If
+    /// the source files are present in the html rendering, then this will be
+    /// `true`.
+    crate include_sources: bool,
+    /// The local file sources we've emitted and their respective url-paths.
+    crate local_sources: FxHashMap<PathBuf, String>,
+    /// Whether the collapsed pass ran
+    collapsed: bool,
+    /// The base-URL of the issue tracker for when an item has been tagged with
+    /// an issue number.
+    pub(super) issue_tracker_base_url: Option<String>,
+    /// The directories that have already been created in this doc run. Used to reduce the number
+    /// of spurious `create_dir_all` calls.
+    created_dirs: RefCell<FxHashSet<PathBuf>>,
+    /// This flag indicates whether listings of modules (in the side bar and documentation itself)
+    /// should be ordered alphabetically or in order of appearance (in the source code).
+    pub(super) sort_modules_alphabetically: bool,
+    /// Additional CSS files to be added to the generated docs.
+    crate style_files: Vec<StylePath>,
+    /// Suffix to be added on resource files (if suffix is "-v2" then "light.css" becomes
+    /// "light-v2.css").
+    crate resource_suffix: String,
+    /// Optional path string to be used to load static files on output pages. If not set, uses
+    /// combinations of `../` to reach the documentation root.
+    crate static_root_path: Option<String>,
+    /// The fs handle we are working with.
+    crate fs: DocFS,
+    /// The default edition used to parse doctests.
+    crate edition: Edition,
+    pub(super) codes: ErrorCodes,
+    pub(super) playground: Option<markdown::Playground>,
+    all: RefCell<AllTypes>,
+    /// Storage for the errors produced while generating documentation so they
+    /// can be printed together at the end.
+    errors: Receiver<String>,
+    /// `None` by default, depends on the `generate-redirect-map` option flag. If this field is set
+    /// to `Some(...)`, it'll store redirections and then generate a JSON file at the top level of
+    /// the crate.
+    redirections: Option<RefCell<FxHashMap<String, String>>>,
+}
+
+impl SharedContext<'_> {
+    crate fn ensure_dir(&self, dst: &Path) -> Result<(), Error> {
+        let mut dirs = self.created_dirs.borrow_mut();
+        if !dirs.contains(dst) {
+            try_err!(self.fs.create_dir_all(dst), dst);
+            dirs.insert(dst.to_path_buf());
+        }
+
+        Ok(())
     }
 
+    /// Based on whether the `collapse-docs` pass was run, return either the `doc_value` or the
+    /// `collapsed_doc_value` of the given item.
+    crate fn maybe_collapsed_doc_value<'a>(&self, item: &'a clean::Item) -> Option<String> {
+        if self.collapsed { item.collapsed_doc_value() } else { item.doc_value() }
+    }
+}
+
+impl<'tcx> Context<'tcx> {
     pub(super) fn tcx(&self) -> TyCtxt<'tcx> {
         self.shared.tcx
     }
@@ -228,15 +282,15 @@ impl<'tcx> Context<'tcx> {
     /// may happen, for example, with externally inlined items where the source
     /// of their crate documentation isn't known.
     pub(super) fn src_href(&self, item: &clean::Item) -> Option<String> {
-        if item.source.is_dummy() {
+        if item.span.is_dummy() {
             return None;
         }
         let mut root = self.root_path();
         let mut path = String::new();
-        let cnum = item.source.cnum(self.sess());
+        let cnum = item.span.cnum(self.sess());
 
         // We can safely ignore synthetic `SourceFile`s.
-        let file = match item.source.filename(self.sess()) {
+        let file = match item.span.filename(self.sess()) {
             FileName::Real(ref path) => path.local_path().to_path_buf(),
             _ => return None,
         };
@@ -270,8 +324,8 @@ impl<'tcx> Context<'tcx> {
             (&*symbol, &path)
         };
 
-        let loline = item.source.lo(self.sess()).line;
-        let hiline = item.source.hi(self.sess()).line;
+        let loline = item.span.lo(self.sess()).line;
+        let hiline = item.span.hi(self.sess()).line;
         let lines =
             if loline == hiline { loline.to_string() } else { format!("{}-{}", loline, hiline) };
         Some(format!(
@@ -290,6 +344,8 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
         "html"
     }
 
+    const RUN_ON_MODULE: bool = true;
+
     fn init(
         mut krate: clean::Crate,
         options: RenderOptions,
@@ -299,6 +355,7 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
     ) -> Result<(Self, clean::Crate), Error> {
         // need to save a copy of the options for rendering the index page
         let md_opts = options.clone();
+        let emit_crate = options.should_emit_crate();
         let RenderOptions {
             output,
             external_html,
@@ -343,29 +400,27 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
 
         // Crawl the crate attributes looking for attributes which control how we're
         // going to emit HTML
-        if let Some(attrs) = krate.module.as_ref().map(|m| &m.attrs) {
-            for attr in attrs.lists(sym::doc) {
-                match (attr.name_or_empty(), attr.value_str()) {
-                    (sym::html_favicon_url, Some(s)) => {
-                        layout.favicon = s.to_string();
-                    }
-                    (sym::html_logo_url, Some(s)) => {
-                        layout.logo = s.to_string();
-                    }
-                    (sym::html_playground_url, Some(s)) => {
-                        playground = Some(markdown::Playground {
-                            crate_name: Some(krate.name.to_string()),
-                            url: s.to_string(),
-                        });
-                    }
-                    (sym::issue_tracker_base_url, Some(s)) => {
-                        issue_tracker_base_url = Some(s.to_string());
-                    }
-                    (sym::html_no_source, None) if attr.is_word() => {
-                        include_sources = false;
-                    }
-                    _ => {}
+        for attr in krate.module.attrs.lists(sym::doc) {
+            match (attr.name_or_empty(), attr.value_str()) {
+                (sym::html_favicon_url, Some(s)) => {
+                    layout.favicon = s.to_string();
                 }
+                (sym::html_logo_url, Some(s)) => {
+                    layout.logo = s.to_string();
+                }
+                (sym::html_playground_url, Some(s)) => {
+                    playground = Some(markdown::Playground {
+                        crate_name: Some(krate.name.to_string()),
+                        url: s.to_string(),
+                    });
+                }
+                (sym::issue_tracker_base_url, Some(s)) => {
+                    issue_tracker_base_url = Some(s.to_string());
+                }
+                (sym::html_no_source, None) if attr.is_word() => {
+                    include_sources = false;
+                }
+                _ => {}
             }
         }
         let (sender, receiver) = channel();
@@ -406,7 +461,9 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
 
         let dst = output;
         scx.ensure_dir(&dst)?;
-        krate = sources::render(&dst, &mut scx, krate)?;
+        if emit_crate {
+            krate = sources::render(&dst, &mut scx, krate)?;
+        }
 
         // Build our search index
         let index = build_index(&krate, &mut cache, tcx);
@@ -431,14 +488,11 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
     }
 
     fn make_child_renderer(&self) -> Self {
-        let mut id_map = IdMap::new();
-        id_map.populate(&INITIAL_IDS);
-
         Self {
             current: self.current.clone(),
             dst: self.dst.clone(),
             render_redirect_pages: self.render_redirect_pages,
-            id_map: RefCell::new(id_map),
+            id_map: RefCell::new(IdMap::new()),
             deref_id_map: RefCell::new(FxHashMap::default()),
             shared: Rc::clone(&self.shared),
             cache: Rc::clone(&self.cache),
@@ -447,12 +501,11 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
 
     fn after_krate(
         &mut self,
-        krate: &clean::Crate,
+        crate_name: Symbol,
         diag: &rustc_errors::Handler,
     ) -> Result<(), Error> {
-        let final_file = self.dst.join(&*krate.name.as_str()).join("all.html");
+        let final_file = self.dst.join(&*crate_name.as_str()).join("all.html");
         let settings_file = self.dst.join("settings.html");
-        let crate_name = krate.name;
 
         let mut root_path = self.dst.to_str().expect("invalid path").to_owned();
         if !root_path.ends_with('/') {
@@ -490,7 +543,7 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
             |buf: &mut Buffer| all.print(buf),
             &self.shared.style_files,
         );
-        self.shared.fs.write(&final_file, v.as_bytes())?;
+        self.shared.fs.write(final_file, v.as_bytes())?;
 
         // Generating settings page.
         page.title = "Rustdoc settings";
@@ -515,9 +568,9 @@ impl<'tcx> FormatRenderer<'tcx> for Context<'tcx> {
         if let Some(ref redirections) = self.shared.redirections {
             if !redirections.borrow().is_empty() {
                 let redirect_map_path =
-                    self.dst.join(&*krate.name.as_str()).join("redirect-map.json");
+                    self.dst.join(&*crate_name.as_str()).join("redirect-map.json");
                 let paths = serde_json::to_string(&*redirections.borrow()).unwrap();
-                self.shared.ensure_dir(&self.dst.join(&*krate.name.as_str()))?;
+                self.shared.ensure_dir(&self.dst.join(&*crate_name.as_str()))?;
                 self.shared.fs.write(&redirect_map_path, paths.as_bytes())?;
             }
         }

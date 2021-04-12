@@ -1,6 +1,6 @@
 #![doc(html_root_url = "https://doc.rust-lang.org/nightly/nightly-rustc/")]
 #![feature(nll)]
-#![feature(or_patterns)]
+#![cfg_attr(bootstrap, feature(or_patterns))]
 #![recursion_limit = "256"]
 
 mod dump_visitor;
@@ -379,7 +379,7 @@ impl<'tcx> SaveContext<'tcx> {
         }
     }
 
-    pub fn get_field_data(&self, field: &hir::StructField<'_>, scope: hir::HirId) -> Option<Def> {
+    pub fn get_field_data(&self, field: &hir::FieldDef<'_>, scope: hir::HirId) -> Option<Def> {
         let name = field.ident.to_string();
         let scope_def_id = self.tcx.hir().local_def_id(scope).to_def_id();
         let qualname = format!("::{}::{}", self.tcx.def_path_str(scope_def_id), field.ident);
@@ -513,19 +513,6 @@ impl<'tcx> SaveContext<'tcx> {
             docs,
             sig: None,
             attributes: lower_attributes(attributes, self),
-        })
-    }
-
-    pub fn get_trait_ref_data(&self, trait_ref: &hir::TraitRef<'_>) -> Option<Ref> {
-        self.lookup_def_id(trait_ref.hir_ref_id).and_then(|def_id| {
-            let span = trait_ref.path.span;
-            if generated_code(span) {
-                return None;
-            }
-            let sub_span = trait_ref.path.segments.last().unwrap().ident.span;
-            filter!(self.span_utils, sub_span);
-            let span = self.span_from_span(sub_span);
-            Some(Ref { kind: RefKind::Type, span, ref_id: id_from_def_id(def_id) })
         })
     }
 
@@ -769,7 +756,7 @@ impl<'tcx> SaveContext<'tcx> {
 
     pub fn get_field_ref_data(
         &self,
-        field_ref: &hir::Field<'_>,
+        field_ref: &hir::ExprField<'_>,
         variant: &ty::VariantDef,
     ) -> Option<Ref> {
         filter!(self.span_utils, field_ref.ident.span);
@@ -784,7 +771,10 @@ impl<'tcx> SaveContext<'tcx> {
     /// For a given piece of AST defined by the supplied Span and NodeId,
     /// returns `None` if the node is not macro-generated or the span is malformed,
     /// else uses the expansion callsite and callee to return some MacroRef.
-    pub fn get_macro_use_data(&self, span: Span) -> Option<MacroRef> {
+    ///
+    /// FIXME: [`DumpVisitor::process_macro_use`] should actually dump this data
+    #[allow(dead_code)]
+    fn get_macro_use_data(&self, span: Span) -> Option<MacroRef> {
         if !generated_code(span) {
             return None;
         }

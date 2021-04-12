@@ -83,6 +83,8 @@ struct ProbeContext<'a, 'tcx> {
     unsatisfied_predicates: Vec<(ty::Predicate<'tcx>, Option<ty::Predicate<'tcx>>)>,
 
     is_suggestion: IsSuggestion,
+
+    scope_expr_id: hir::HirId,
 }
 
 impl<'a, 'tcx> Deref for ProbeContext<'a, 'tcx> {
@@ -448,6 +450,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                 orig_values,
                 steps.steps,
                 is_suggestion,
+                scope_expr_id,
             );
 
             probe_cx.assemble_inherent_candidates();
@@ -547,6 +550,7 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
         orig_steps_var_values: OriginalQueryValues<'tcx>,
         steps: Lrc<Vec<CandidateStep<'tcx>>>,
         is_suggestion: IsSuggestion,
+        scope_expr_id: hir::HirId,
     ) -> ProbeContext<'a, 'tcx> {
         ProbeContext {
             fcx,
@@ -564,6 +568,7 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
             private_candidate: None,
             unsatisfied_predicates: Vec::new(),
             is_suggestion,
+            scope_expr_id,
         }
     }
 
@@ -742,15 +747,15 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
 
         debug!("assemble_inherent_impl_probe {:?}", impl_def_id);
 
-        let (impl_ty, impl_substs) = self.impl_ty_and_substs(impl_def_id);
-        let impl_ty = impl_ty.subst(self.tcx, impl_substs);
-
         for item in self.impl_or_trait_item(impl_def_id) {
             if !self.has_applicable_self(&item) {
                 // No receiver declared. Not a candidate.
                 self.record_static_candidate(ImplSource(impl_def_id));
                 continue;
             }
+
+            let (impl_ty, impl_substs) = self.impl_ty_and_substs(impl_def_id);
+            let impl_ty = impl_ty.subst(self.tcx, impl_substs);
 
             // Determine the receiver type that the method itself expects.
             let xform_tys = self.xform_self_ty(&item, impl_ty, impl_substs);
@@ -1312,7 +1317,7 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
     ) {
         self.tcx.struct_span_lint_hir(
             lint::builtin::UNSTABLE_NAME_COLLISIONS,
-            self.fcx.body_id,
+            self.scope_expr_id,
             self.span,
             |lint| {
                 let def_kind = stable_pick.item.kind.as_def_kind();
@@ -1594,6 +1599,7 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
                 self.orig_steps_var_values.clone(),
                 steps,
                 IsSuggestion(true),
+                self.scope_expr_id,
             );
             pcx.allow_similar_names = true;
             pcx.assemble_inherent_candidates();
@@ -1700,7 +1706,7 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
                             // In general, during probe we erase regions.
                             self.tcx.lifetimes.re_erased.into()
                         }
-                        GenericParamDefKind::Type { .. } | GenericParamDefKind::Const => {
+                        GenericParamDefKind::Type { .. } | GenericParamDefKind::Const { .. } => {
                             self.var_for_def(self.span, param)
                         }
                     }
@@ -1753,7 +1759,7 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
     ///    region got replaced with the same variable, which requires a bit more coordination
     ///    and/or tracking the substitution and
     ///    so forth.
-    fn erase_late_bound_regions<T>(&self, value: ty::Binder<T>) -> T
+    fn erase_late_bound_regions<T>(&self, value: ty::Binder<'tcx, T>) -> T
     where
         T: TypeFoldable<'tcx>,
     {
@@ -1762,7 +1768,9 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
 
     /// Finds the method with the appropriate name (or return type, as the case may be). If
     /// `allow_similar_names` is set, find methods with close-matching names.
-    fn impl_or_trait_item(&self, def_id: DefId) -> Vec<ty::AssocItem> {
+    // The length of the returned iterator is nearly always 0 or 1 and this
+    // method is fairly hot.
+    fn impl_or_trait_item(&self, def_id: DefId) -> SmallVec<[ty::AssocItem; 1]> {
         if let Some(name) = self.method_name {
             if self.allow_similar_names {
                 let max_dist = max(name.as_str().len(), 3) / 3;
@@ -1778,7 +1786,7 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
             } else {
                 self.fcx
                     .associated_item(def_id, name, Namespace::ValueNS)
-                    .map_or_else(Vec::new, |x| vec![x])
+                    .map_or_else(SmallVec::new, |x| SmallVec::from_buf([x]))
             }
         } else {
             self.tcx.associated_items(def_id).in_definition_order().copied().collect()

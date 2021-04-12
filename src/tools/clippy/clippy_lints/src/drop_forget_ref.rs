@@ -1,4 +1,6 @@
-use crate::utils::{is_copy, match_def_path, paths, span_lint_and_note};
+use clippy_utils::diagnostics::span_lint_and_note;
+use clippy_utils::ty::is_copy;
+use clippy_utils::{match_def_path, paths};
 use if_chain::if_chain;
 use rustc_hir::{Expr, ExprKind};
 use rustc_lint::{LateContext, LateLintPass};
@@ -111,7 +113,7 @@ declare_lint_pass!(DropForgetRef => [DROP_REF, FORGET_REF, DROP_COPY, FORGET_COP
 impl<'tcx> LateLintPass<'tcx> for DropForgetRef {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx Expr<'_>) {
         if_chain! {
-            if let ExprKind::Call(ref path, ref args) = expr.kind;
+            if let ExprKind::Call(path, args) = expr.kind;
             if let ExprKind::Path(ref qpath) = path.kind;
             if args.len() == 1;
             if let Some(def_id) = cx.qpath_res(qpath, path.hir_id).opt_def_id();

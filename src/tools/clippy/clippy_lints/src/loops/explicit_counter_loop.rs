@@ -1,7 +1,9 @@
 use super::{
     get_span_of_entire_for_loop, make_iterator_snippet, IncrementVisitor, InitializeVisitor, EXPLICIT_COUNTER_LOOP,
 };
-use crate::utils::{get_enclosing_block, is_integer_const, snippet_with_applicability, span_lint_and_sugg};
+use clippy_utils::diagnostics::span_lint_and_sugg;
+use clippy_utils::source::snippet_with_applicability;
+use clippy_utils::{get_enclosing_block, is_integer_const};
 use if_chain::if_chain;
 use rustc_errors::Applicability;
 use rustc_hir::intravisit::{walk_block, walk_expr};
@@ -24,7 +26,7 @@ pub(super) fn check<'tcx>(
 
     // For each candidate, check the parent block to see if
     // it's initialized to zero at the start of the loop.
-    if let Some(block) = get_enclosing_block(&cx, expr.hir_id) {
+    if let Some(block) = get_enclosing_block(cx, expr.hir_id) {
         for id in increment_visitor.into_results() {
             let mut initialize_visitor = InitializeVisitor::new(cx, expr, id);
             walk_block(&mut initialize_visitor, block);

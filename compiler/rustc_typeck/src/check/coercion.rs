@@ -1440,9 +1440,8 @@ impl<'tcx, 'exprs, E: AsCoercionSite> CoerceMany<'tcx, 'exprs, E> {
         // as prior return coercions would not be relevant (#57664).
         let parent_id = fcx.tcx.hir().get_parent_node(id);
         let fn_decl = if let Some((expr, blk_id)) = expression {
-            pointing_at_return_type = fcx.suggest_mismatched_types_on_tail(
-                &mut err, expr, expected, found, cause.span, blk_id,
-            );
+            pointing_at_return_type =
+                fcx.suggest_mismatched_types_on_tail(&mut err, expr, expected, found, blk_id);
             let parent = fcx.tcx.hir().get(parent_id);
             if let (Some(cond_expr), true, false) = (
                 fcx.tcx.hir().get_if_cause(expr.hir_id),
@@ -1487,7 +1486,7 @@ impl<'tcx, 'exprs, E: AsCoercionSite> CoerceMany<'tcx, 'exprs, E> {
         if let (Some((expr, _)), Some((fn_decl, _, _))) =
             (expression, fcx.get_node_fn_decl(parent_item))
         {
-            fcx.suggest_missing_return_expr(&mut err, expr, fn_decl, expected, found);
+            fcx.suggest_missing_return_expr(&mut err, expr, fn_decl, expected, found, parent_id);
         }
 
         if let (Some(sp), Some(fn_output)) = (fcx.ret_coercion_span.get(), fn_output) {
@@ -1554,7 +1553,7 @@ impl<'tcx, 'exprs, E: AsCoercionSite> CoerceMany<'tcx, 'exprs, E> {
         if let hir::FnRetTy::Return(ty) = fn_output {
             // Get the return type.
             if let hir::TyKind::OpaqueDef(..) = ty.kind {
-                let ty = AstConv::ast_ty_to_ty(fcx, ty);
+                let ty = <dyn AstConv<'_>>::ast_ty_to_ty(fcx, ty);
                 // Get the `impl Trait`'s `DefId`.
                 if let ty::Opaque(def_id, _) = ty.kind() {
                     let hir_id = fcx.tcx.hir().local_def_id_to_hir_id(def_id.expect_local());
@@ -1616,7 +1615,7 @@ impl<'tcx, 'exprs, E: AsCoercionSite> CoerceMany<'tcx, 'exprs, E> {
     fn is_return_ty_unsized(&self, fcx: &FnCtxt<'a, 'tcx>, blk_id: hir::HirId) -> bool {
         if let Some((fn_decl, _)) = fcx.get_fn_decl(blk_id) {
             if let hir::FnRetTy::Return(ty) = fn_decl.output {
-                let ty = AstConv::ast_ty_to_ty(fcx, ty);
+                let ty = <dyn AstConv<'_>>::ast_ty_to_ty(fcx, ty);
                 if let ty::Dynamic(..) = ty.kind() {
                     return true;
                 }

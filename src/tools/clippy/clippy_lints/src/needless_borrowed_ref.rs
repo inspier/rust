@@ -1,4 +1,5 @@
-use crate::utils::{snippet_with_applicability, span_lint_and_then};
+use clippy_utils::diagnostics::span_lint_and_then;
+use clippy_utils::source::snippet_with_applicability;
 use if_chain::if_chain;
 use rustc_errors::Applicability;
 use rustc_hir::{BindingAnnotation, Mutability, Node, Pat, PatKind};
@@ -50,7 +51,7 @@ impl<'tcx> LateLintPass<'tcx> for NeedlessBorrowedRef {
 
         if_chain! {
             // Only lint immutable refs, because `&mut ref T` may be useful.
-            if let PatKind::Ref(ref sub_pat, Mutability::Not) = pat.kind;
+            if let PatKind::Ref(sub_pat, Mutability::Not) = pat.kind;
 
             // Check sub_pat got a `ref` keyword (excluding `ref mut`).
             if let PatKind::Binding(BindingAnnotation::Ref, .., spanned_name, _) = sub_pat.kind;

@@ -1,11 +1,12 @@
+use rustc_ast as ast;
 use rustc_data_structures::fx::{FxHashMap, FxHashSet};
 use rustc_data_structures::sync::{self, Lrc};
 use rustc_driver::abort_on_err;
 use rustc_errors::emitter::{Emitter, EmitterWriter};
 use rustc_errors::json::JsonEmitter;
 use rustc_feature::UnstableFeatures;
-use rustc_hir::def::{Namespace::TypeNS, Res};
-use rustc_hir::def_id::{CrateNum, DefId, DefIndex, LocalDefId, CRATE_DEF_INDEX, LOCAL_CRATE};
+use rustc_hir::def::Res;
+use rustc_hir::def_id::{CrateNum, DefId, DefIndex, LocalDefId, LOCAL_CRATE};
 use rustc_hir::HirId;
 use rustc_hir::{
     intravisit::{self, NestedVisitorMap, Visitor},
@@ -22,7 +23,7 @@ use rustc_session::DiagnosticOutput;
 use rustc_session::Session;
 use rustc_span::source_map;
 use rustc_span::symbol::sym;
-use rustc_span::{Span, DUMMY_SP};
+use rustc_span::Span;
 
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
@@ -348,42 +349,17 @@ crate fn create_config(
 }
 
 crate fn create_resolver<'a>(
-    externs: config::Externs,
     queries: &Queries<'a>,
     sess: &Session,
 ) -> Rc<RefCell<interface::BoxedResolver>> {
-    let extern_names: Vec<String> = externs
-        .iter()
-        .filter(|(_, entry)| entry.add_prelude)
-        .map(|(name, _)| name)
-        .cloned()
-        .collect();
-
     let parts = abort_on_err(queries.expansion(), sess).peek();
-    let resolver = parts.1.borrow();
+    let (krate, resolver, _) = &*parts;
+    let resolver = resolver.borrow().clone();
 
-    // Before we actually clone it, let's force all the extern'd crates to
-    // actually be loaded, just in case they're only referred to inside
-    // intra-doc links
-    resolver.borrow_mut().access(|resolver| {
-        sess.time("load_extern_crates", || {
-            for extern_name in &extern_names {
-                debug!("loading extern crate {}", extern_name);
-                if let Err(()) = resolver
-                    .resolve_str_path_error(
-                        DUMMY_SP,
-                        extern_name,
-                        TypeNS,
-                        LocalDefId { local_def_index: CRATE_DEF_INDEX }.to_def_id(),
-                  ) {
-                    warn!("unable to resolve external crate {} (do you have an unused `--extern` crate?)", extern_name)
-                  }
-            }
-        });
-    });
+    let mut loader = crate::passes::collect_intra_doc_links::IntraLinkCrateLoader::new(resolver);
+    ast::visit::walk_crate(&mut loader, krate);
 
-    // Now we're good to clone the resolver because everything should be loaded
-    resolver.clone()
+    loader.resolver
 }
 
 crate fn run_global_ctxt(
@@ -464,31 +440,31 @@ crate fn run_global_ctxt(
     if let Some(sized_trait_did) = ctxt.tcx.lang_items().sized_trait() {
         let mut sized_trait = build_external_trait(&mut ctxt, sized_trait_did);
         sized_trait.is_auto = true;
-        ctxt.external_traits.borrow_mut().insert(
-            sized_trait_did,
-            TraitWithExtraInfo { trait_: sized_trait, is_spotlight: false },
-        );
+        ctxt.external_traits
+            .borrow_mut()
+            .insert(sized_trait_did, TraitWithExtraInfo { trait_: sized_trait, is_notable: false });
     }
 
     debug!("crate: {:?}", tcx.hir().krate());
 
     let mut krate = tcx.sess.time("clean_crate", || clean::krate(&mut ctxt));
 
-    if let Some(ref m) = krate.module {
-        if m.doc_value().map(|d| d.is_empty()).unwrap_or(true) {
-            let help = "The following guide may be of use:\n\
-                https://doc.rust-lang.org/nightly/rustdoc/how-to-write-documentation.html";
-            tcx.struct_lint_node(
-                crate::lint::MISSING_CRATE_LEVEL_DOCS,
-                DocContext::as_local_hir_id(tcx, m.def_id).unwrap(),
-                |lint| {
-                    let mut diag =
-                        lint.build("no documentation found for this crate's top-level module");
-                    diag.help(help);
-                    diag.emit();
-                },
-            );
-        }
+    if krate.module.doc_value().map(|d| d.is_empty()).unwrap_or(true) {
+        let help = format!(
+            "The following guide may be of use:\n\
+            https://doc.rust-lang.org/{}/rustdoc/how-to-write-documentation.html",
+            crate::doc_rust_lang_org_channel(),
+        );
+        tcx.struct_lint_node(
+            crate::lint::MISSING_CRATE_LEVEL_DOCS,
+            DocContext::as_local_hir_id(tcx, krate.module.def_id).unwrap(),
+            |lint| {
+                let mut diag =
+                    lint.build("no documentation found for this crate's top-level module");
+                diag.help(&help);
+                diag.emit();
+            },
+        );
     }
 
     fn report_deprecated_attr(name: &str, diag: &rustc_errors::Handler, sp: Span) {
@@ -531,7 +507,7 @@ crate fn run_global_ctxt(
 
     // Process all of the crate attributes, extracting plugin metadata along
     // with the passes which we are supposed to run.
-    for attr in krate.module.as_ref().unwrap().attrs.lists(sym::doc) {
+    for attr in krate.module.attrs.lists(sym::doc) {
         let diag = ctxt.sess().diagnostic();
 
         let name = attr.name_or_empty();

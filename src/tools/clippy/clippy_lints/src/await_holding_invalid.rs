@@ -1,4 +1,5 @@
-use crate::utils::{match_def_path, paths, span_lint_and_note};
+use clippy_utils::diagnostics::span_lint_and_note;
+use clippy_utils::{match_def_path, paths};
 use rustc_hir::def_id::DefId;
 use rustc_hir::{AsyncGeneratorKind, Body, BodyId, GeneratorKind};
 use rustc_lint::{LateContext, LateLintPass};
@@ -100,7 +101,7 @@ impl LateLintPass<'_> for AwaitHolding {
             let typeck_results = cx.tcx.typeck_body(body_id);
             check_interior_types(
                 cx,
-                &typeck_results.generator_interior_types.as_ref().skip_binder(),
+                typeck_results.generator_interior_types.as_ref().skip_binder(),
                 body.value.span,
             );
         }

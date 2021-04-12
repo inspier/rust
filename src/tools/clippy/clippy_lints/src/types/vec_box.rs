@@ -1,3 +1,7 @@
+use clippy_utils::diagnostics::span_lint_and_sugg;
+use clippy_utils::last_path_segment;
+use clippy_utils::source::snippet;
+use if_chain::if_chain;
 use rustc_errors::Applicability;
 use rustc_hir::{self as hir, def_id::DefId, GenericArg, QPath, TyKind};
 use rustc_lint::LateContext;
@@ -5,10 +9,6 @@ use rustc_middle::ty::TypeFoldable;
 use rustc_span::symbol::sym;
 use rustc_target::abi::LayoutOf;
 use rustc_typeck::hir_ty_to_ty;
-
-use if_chain::if_chain;
-
-use crate::utils::{last_path_segment, snippet, span_lint_and_sugg};
 
 use super::VEC_BOX;
 
@@ -22,7 +22,7 @@ pub(super) fn check(
     if cx.tcx.is_diagnostic_item(sym::vec_type, def_id) {
         if_chain! {
             // Get the _ part of Vec<_>
-            if let Some(ref last) = last_path_segment(qpath).args;
+            if let Some(last) = last_path_segment(qpath).args;
             if let Some(ty) = last.args.iter().find_map(|arg| match arg {
                 GenericArg::Type(ty) => Some(ty),
                 _ => None,
@@ -33,7 +33,7 @@ pub(super) fn check(
             if let Some(def_id) = res.opt_def_id();
             if Some(def_id) == cx.tcx.lang_items().owned_box();
             // At this point, we know ty is Box<T>, now get T
-            if let Some(ref last) = last_path_segment(ty_qpath).args;
+            if let Some(last) = last_path_segment(ty_qpath).args;
             if let Some(boxed_ty) = last.args.iter().find_map(|arg| match arg {
                 GenericArg::Type(ty) => Some(ty),
                 _ => None,

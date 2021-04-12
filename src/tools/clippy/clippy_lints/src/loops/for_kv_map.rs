@@ -1,6 +1,9 @@
 use super::FOR_KV_MAP;
-use crate::utils::visitors::LocalUsedVisitor;
-use crate::utils::{is_type_diagnostic_item, match_type, multispan_sugg, paths, snippet, span_lint_and_then, sugg};
+use clippy_utils::diagnostics::{multispan_sugg, span_lint_and_then};
+use clippy_utils::source::snippet;
+use clippy_utils::ty::{is_type_diagnostic_item, match_type};
+use clippy_utils::visitors::LocalUsedVisitor;
+use clippy_utils::{paths, sugg};
 use rustc_hir::{BorrowKind, Expr, ExprKind, Mutability, Pat, PatKind};
 use rustc_lint::LateContext;
 use rustc_middle::ty;
@@ -16,7 +19,7 @@ pub(super) fn check<'tcx>(
 ) {
     let pat_span = pat.span;
 
-    if let PatKind::Tuple(ref pat, _) = pat.kind {
+    if let PatKind::Tuple(pat, _) = pat.kind {
         if pat.len() == 2 {
             let arg_span = arg.span;
             let (new_pat_span, kind, ty, mutbl) = match *cx.typeck_results().expr_ty(arg).kind() {
@@ -32,7 +35,7 @@ pub(super) fn check<'tcx>(
                 Mutability::Mut => "_mut",
             };
             let arg = match arg.kind {
-                ExprKind::AddrOf(BorrowKind::Ref, _, ref expr) => &**expr,
+                ExprKind::AddrOf(BorrowKind::Ref, _, expr) => expr,
                 _ => arg,
             };
 

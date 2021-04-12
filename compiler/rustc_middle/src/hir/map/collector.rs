@@ -52,6 +52,7 @@ fn insert_vec_map<K: Idx, V: Clone>(map: &mut IndexVec<K, Option<V>>, k: K, v: V
     if i >= len {
         map.extend(repeat(None).take(i - len + 1));
     }
+    debug_assert!(map[k].is_none());
     map[k] = Some(v);
 }
 
@@ -216,9 +217,7 @@ impl<'a, 'hir> NodeCollector<'a, 'hir> {
             // Overwrite the dummy hash with the real HIR owner hash.
             nodes.hash = hash;
 
-            // FIXME: feature(impl_trait_in_bindings) broken and trigger this assert
-            //assert!(data.signature.is_none());
-
+            debug_assert!(data.signature.is_none());
             data.signature =
                 Some(self.arena.alloc(Owner { parent: entry.parent, node: entry.node }));
 
@@ -374,26 +373,12 @@ impl<'a, 'hir> Visitor<'hir> for NodeCollector<'a, 'hir> {
     }
 
     fn visit_generic_param(&mut self, param: &'hir GenericParam<'hir>) {
-        if let hir::GenericParamKind::Type {
-            synthetic: Some(hir::SyntheticTyParamKind::ImplTrait),
-            ..
-        } = param.kind
-        {
-            debug_assert_eq!(
-                param.hir_id.owner,
-                self.definitions.opt_hir_id_to_local_def_id(param.hir_id).unwrap()
-            );
-            self.with_dep_node_owner(param.hir_id.owner, param, |this, hash| {
-                this.insert_with_hash(param.span, param.hir_id, Node::GenericParam(param), hash);
+        self.insert(param.span, param.hir_id, Node::GenericParam(param));
+        intravisit::walk_generic_param(self, param);
+    }
 
-                this.with_parent(param.hir_id, |this| {
-                    intravisit::walk_generic_param(this, param);
-                });
-            });
-        } else {
-            self.insert(param.span, param.hir_id, Node::GenericParam(param));
-            intravisit::walk_generic_param(self, param);
-        }
+    fn visit_const_param_default(&mut self, param: HirId, ct: &'hir AnonConst) {
+        self.with_parent(param, |this| intravisit::walk_const_param_default(this, ct))
     }
 
     fn visit_trait_item(&mut self, ti: &'hir TraitItem<'hir>) {
@@ -554,10 +539,10 @@ impl<'a, 'hir> Visitor<'hir> for NodeCollector<'a, 'hir> {
         });
     }
 
-    fn visit_struct_field(&mut self, field: &'hir StructField<'hir>) {
+    fn visit_field_def(&mut self, field: &'hir FieldDef<'hir>) {
         self.insert(field.span, field.hir_id, Node::Field(field));
         self.with_parent(field.hir_id, |this| {
-            intravisit::walk_struct_field(this, field);
+            intravisit::walk_field_def(this, field);
         });
     }
 

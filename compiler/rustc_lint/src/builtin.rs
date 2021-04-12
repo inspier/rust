@@ -481,7 +481,7 @@ fn has_doc(sess: &Session, attr: &ast::Attribute) -> bool {
         return false;
     }
 
-    if attr.is_value_str() {
+    if attr.value_str().is_some() {
         return true;
     }
 
@@ -565,7 +565,7 @@ impl<'tcx> LateLintPass<'tcx> for MissingDoc {
     }
 
     fn check_crate(&mut self, cx: &LateContext<'_>, krate: &hir::Crate<'_>) {
-        self.check_missing_docs_attrs(cx, hir::CRATE_HIR_ID, krate.item.span, "the", "crate");
+        self.check_missing_docs_attrs(cx, hir::CRATE_HIR_ID, krate.item.inner, "the", "crate");
 
         for macro_def in krate.exported_macros {
             let attrs = cx.tcx.hir().attrs(macro_def.hir_id());
@@ -651,7 +651,7 @@ impl<'tcx> LateLintPass<'tcx> for MissingDoc {
         self.check_missing_docs_attrs(cx, foreign_item.hir_id(), foreign_item.span, article, desc);
     }
 
-    fn check_struct_field(&mut self, cx: &LateContext<'_>, sf: &hir::StructField<'_>) {
+    fn check_field_def(&mut self, cx: &LateContext<'_>, sf: &hir::FieldDef<'_>) {
         if !sf.is_positional() {
             self.check_missing_docs_attrs(cx, sf.hir_id, sf.span, "a", "struct field")
         }
@@ -989,7 +989,7 @@ fn warn_if_doc(cx: &EarlyContext<'_>, node_span: Span, node_kind: &str, attrs: &
                 Some(sugared_span.map_or(attr.span, |span| span.with_hi(attr.span.hi())));
         }
 
-        if attrs.peek().map(|next_attr| next_attr.is_doc_comment()).unwrap_or_default() {
+        if attrs.peek().map_or(false, |next_attr| next_attr.is_doc_comment()) {
             continue;
         }
 
@@ -1345,7 +1345,7 @@ impl<'tcx> LateLintPass<'tcx> for UnreachablePub {
         );
     }
 
-    fn check_struct_field(&mut self, cx: &LateContext<'_>, field: &hir::StructField<'_>) {
+    fn check_field_def(&mut self, cx: &LateContext<'_>, field: &hir::FieldDef<'_>) {
         self.perform_lint(cx, "field", field.hir_id, &field.vis, field.span, false);
     }
 
@@ -2280,7 +2280,7 @@ declare_lint! {
 }
 
 declare_lint_pass!(
-    /// Check for used feature gates in `INCOMPLETE_FEATURES` in `librustc_feature/active.rs`.
+    /// Check for used feature gates in `INCOMPLETE_FEATURES` in `rustc_feature/src/active.rs`.
     IncompleteFeatures => [INCOMPLETE_FEATURES]
 );
 

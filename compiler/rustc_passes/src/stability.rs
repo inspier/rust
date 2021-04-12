@@ -9,7 +9,7 @@ use rustc_hir as hir;
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::def_id::{DefId, LocalDefId, CRATE_DEF_INDEX, LOCAL_CRATE};
 use rustc_hir::intravisit::{self, NestedVisitorMap, Visitor};
-use rustc_hir::{Generics, HirId, Item, StructField, TraitRef, Ty, TyKind, Variant};
+use rustc_hir::{FieldDef, Generics, HirId, Item, TraitRef, Ty, TyKind, Variant};
 use rustc_middle::hir::map::Map;
 use rustc_middle::middle::privacy::AccessLevels;
 use rustc_middle::middle::stability::{DeprecationEntry, Index};
@@ -22,6 +22,7 @@ use rustc_span::symbol::{sym, Symbol};
 use rustc_span::{Span, DUMMY_SP};
 
 use std::cmp::Ordering;
+use std::iter;
 use std::mem::replace;
 use std::num::NonZeroU32;
 
@@ -214,7 +215,7 @@ impl<'a, 'tcx> Annotator<'a, 'tcx> {
             {
                 // Explicit version of iter::order::lt to handle parse errors properly
                 for (dep_v, stab_v) in
-                    dep_since.as_str().split('.').zip(stab_since.as_str().split('.'))
+                    iter::zip(dep_since.as_str().split('.'), stab_since.as_str().split('.'))
                 {
                     match stab_v.parse::<u64>() {
                         Err(_) => {
@@ -465,7 +466,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
         )
     }
 
-    fn visit_struct_field(&mut self, s: &'tcx StructField<'tcx>) {
+    fn visit_field_def(&mut self, s: &'tcx FieldDef<'tcx>) {
         self.annotate(
             s.hir_id,
             s.span,
@@ -474,7 +475,7 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
             InheritConstStability::No,
             InheritStability::Yes,
             |v| {
-                intravisit::walk_struct_field(v, s);
+                intravisit::walk_field_def(v, s);
             },
         );
     }
@@ -507,10 +508,9 @@ impl<'a, 'tcx> Visitor<'tcx> for Annotator<'a, 'tcx> {
 
     fn visit_generic_param(&mut self, p: &'tcx hir::GenericParam<'tcx>) {
         let kind = match &p.kind {
-            // FIXME(const_generics_defaults)
-            hir::GenericParamKind::Type { default, .. } if default.is_some() => {
-                AnnotationKind::Container
-            }
+            // Allow stability attributes on default generic arguments.
+            hir::GenericParamKind::Type { default: Some(_), .. }
+            | hir::GenericParamKind::Const { default: Some(_), .. } => AnnotationKind::Container,
             _ => AnnotationKind::Prohibited,
         };
 
@@ -610,9 +610,9 @@ impl<'tcx> Visitor<'tcx> for MissingStabilityAnnotations<'tcx> {
         intravisit::walk_variant(self, var, g, item_id);
     }
 
-    fn visit_struct_field(&mut self, s: &'tcx StructField<'tcx>) {
+    fn visit_field_def(&mut self, s: &'tcx FieldDef<'tcx>) {
         self.check_missing_stability(s.hir_id, s.span);
-        intravisit::walk_struct_field(self, s);
+        intravisit::walk_field_def(self, s);
     }
 
     fn visit_foreign_item(&mut self, i: &'tcx hir::ForeignItem<'tcx>) {
@@ -686,7 +686,7 @@ fn new_index(tcx: TyCtxt<'tcx>) -> Index<'tcx> {
 
         annotator.annotate(
             hir::CRATE_HIR_ID,
-            krate.item.span,
+            krate.item.inner,
             AnnotationKind::Required,
             InheritDeprecation::Yes,
             InheritConstStability::No,
@@ -885,7 +885,7 @@ pub fn check_unused_or_stable_features(tcx: TyCtxt<'_>) {
     if tcx.stability().staged_api[&LOCAL_CRATE] {
         let krate = tcx.hir().krate();
         let mut missing = MissingStabilityAnnotations { tcx, access_levels };
-        missing.check_missing_stability(hir::CRATE_HIR_ID, krate.item.span);
+        missing.check_missing_stability(hir::CRATE_HIR_ID, krate.item.inner);
         intravisit::walk_crate(&mut missing, krate);
         krate.visit_all_item_likes(&mut missing.as_deep_visitor());
     }

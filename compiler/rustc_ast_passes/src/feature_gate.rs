@@ -196,6 +196,14 @@ impl<'a> PostExpansionVisitor<'a> {
                     "thiscall-unwind ABI is experimental and subject to change"
                 );
             }
+            "wasm" => {
+                gate_feature_post!(
+                    &self,
+                    wasm_abi,
+                    span,
+                    "wasm ABI is experimental and subject to change"
+                );
+            }
             abi => self
                 .sess
                 .parse_sess
@@ -313,7 +321,7 @@ impl<'a> Visitor<'a> for PostExpansionVisitor<'a> {
                     include => external_doc
                     cfg => doc_cfg
                     masked => doc_masked
-                    spotlight => doc_spotlight
+                    notable_trait => doc_notable_trait
                     keyword => doc_keyword
                 );
             }
@@ -686,7 +694,6 @@ pub fn check_crate(krate: &ast::Crate, sess: &Session) {
         "to use an async block, remove the `||`: `async {`"
     );
     gate_all!(generators, "yield syntax is experimental");
-    gate_all!(or_patterns, "or-patterns syntax is experimental");
     gate_all!(raw_ref_op, "raw address of syntax is experimental");
     gate_all!(const_trait_bound_opt_out, "`?const` on trait bounds is experimental");
     gate_all!(const_trait_impl, "const trait impls are experimental");

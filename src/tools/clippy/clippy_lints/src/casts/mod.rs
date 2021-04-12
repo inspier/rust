@@ -12,13 +12,12 @@ mod ptr_as_ptr;
 mod unnecessary_cast;
 mod utils;
 
+use clippy_utils::is_hir_ty_cfg_dependant;
 use rustc_hir::{Expr, ExprKind};
 use rustc_lint::{LateContext, LateLintPass, LintContext};
 use rustc_middle::lint::in_external_macro;
 use rustc_semver::RustcVersion;
 use rustc_session::{declare_tool_lint, impl_lint_pass};
-
-use crate::utils::is_hir_ty_cfg_dependant;
 
 declare_clippy_lint! {
     /// **What it does:** Checks for casts from any numerical to a float type where
@@ -373,7 +372,7 @@ impl<'tcx> LateLintPass<'tcx> for Casts {
             return;
         }
 
-        if let ExprKind::Cast(ref cast_expr, cast_to) = expr.kind {
+        if let ExprKind::Cast(cast_expr, cast_to) = expr.kind {
             if is_hir_ty_cfg_dependant(cx, cast_to) {
                 return;
             }

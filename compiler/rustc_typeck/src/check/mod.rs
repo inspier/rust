@@ -495,8 +495,9 @@ fn typeck_with_fallback<'tcx>(
         let fcx = if let (Some(header), Some(decl)) = (fn_header, fn_decl) {
             let fn_sig = if crate::collect::get_infer_ret_ty(&decl.output).is_some() {
                 let fcx = FnCtxt::new(&inh, param_env, body.value.hir_id);
-                AstConv::ty_of_fn(
+                <dyn AstConv<'_>>::ty_of_fn(
                     &fcx,
+                    id,
                     header.unsafety,
                     header.abi,
                     decl,
@@ -527,7 +528,7 @@ fn typeck_with_fallback<'tcx>(
             let fcx = FnCtxt::new(&inh, param_env, body.value.hir_id);
             let expected_type = body_ty
                 .and_then(|ty| match ty.kind {
-                    hir::TyKind::Infer => Some(AstConv::ast_ty_to_ty(&fcx, ty)),
+                    hir::TyKind::Infer => Some(<dyn AstConv<'_>>::ast_ty_to_ty(&fcx, ty)),
                     _ => None,
                 })
                 .unwrap_or_else(|| match tcx.hir().get(id) {
@@ -539,6 +540,19 @@ fn typeck_with_fallback<'tcx>(
                             kind: TypeVariableOriginKind::TypeInference,
                             span,
                         }),
+                        Node::Expr(&hir::Expr { kind: hir::ExprKind::InlineAsm(ia), .. })
+                            if ia.operands.iter().any(|(op, _op_sp)| match op {
+                                hir::InlineAsmOperand::Const { anon_const } => {
+                                    anon_const.hir_id == id
+                                }
+                                _ => false,
+                            }) =>
+                        {
+                            fcx.next_ty_var(TypeVariableOrigin {
+                                kind: TypeVariableOriginKind::MiscVariable,
+                                span,
+                            })
+                        }
                         _ => fallback(),
                     },
                     _ => fallback(),

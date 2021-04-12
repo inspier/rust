@@ -5,6 +5,8 @@
 #![doc(html_root_url = "https://doc.rust-lang.org/nightly/nightly-rustc/")]
 #![feature(crate_visibility_modifier)]
 #![feature(backtrace)]
+#![feature(extended_key_value_attributes)]
+#![feature(iter_zip)]
 #![feature(nll)]
 
 #[macro_use]
@@ -689,10 +691,6 @@ impl Handler {
         db
     }
 
-    pub fn failure(&self, msg: &str) {
-        self.inner.borrow_mut().failure(msg);
-    }
-
     pub fn fatal(&self, msg: &str) -> FatalError {
         self.inner.borrow_mut().fatal(msg)
     }
@@ -767,6 +765,10 @@ impl Handler {
         self.inner.borrow_mut().emitter.emit_future_breakage_report(diags)
     }
 
+    pub fn emit_unused_externs(&self, lint_level: &str, unused_externs: &[&str]) {
+        self.inner.borrow_mut().emit_unused_externs(lint_level, unused_externs)
+    }
+
     pub fn delay_as_bug(&self, diagnostic: Diagnostic) {
         self.inner.borrow_mut().delay_as_bug(diagnostic)
     }
@@ -839,6 +841,10 @@ impl HandlerInner {
 
     fn emit_artifact_notification(&mut self, path: &Path, artifact_type: &str) {
         self.emitter.emit_artifact_notification(path, artifact_type);
+    }
+
+    fn emit_unused_externs(&mut self, lint_level: &str, unused_externs: &[&str]) {
+        self.emitter.emit_unused_externs(lint_level, unused_externs);
     }
 
     fn treat_err_as_bug(&self) -> bool {

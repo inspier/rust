@@ -1600,7 +1600,7 @@ impl<'test> TestCx<'test> {
             .args(&self.props.compile_flags);
 
         if self.config.mode == RustdocJson {
-            rustdoc.arg("--output-format").arg("json");
+            rustdoc.arg("--output-format").arg("json").arg("-Zunstable-options");
         }
 
         if let Some(ref linker) = self.config.linker {
@@ -1909,8 +1909,7 @@ impl<'test> TestCx<'test> {
         } else {
             Command::new(&self.config.rustdoc_path.clone().expect("no rustdoc built yet"))
         };
-        // FIXME Why is -L here?
-        rustc.arg(input_file); //.arg("-L").arg(&self.config.build_base);
+        rustc.arg(input_file);
 
         // Use a single thread for efficiency and a deterministic error message order
         rustc.arg("-Zthreads=1");
@@ -1952,6 +1951,7 @@ impl<'test> TestCx<'test> {
                 if !self.props.compile_flags.iter().any(|s| s.starts_with("--error-format")) {
                     rustc.args(&["--error-format", "json"]);
                 }
+                rustc.arg("-Ccodegen-units=1");
                 rustc.arg("-Zui-testing");
                 rustc.arg("-Zdeduplicate-diagnostics=no");
                 rustc.arg("-Zemit-future-incompat-report");
@@ -2367,6 +2367,9 @@ impl<'test> TestCx<'test> {
     }
 
     fn compare_to_default_rustdoc(&mut self, out_dir: &Path) {
+        if !self.config.has_tidy {
+            return;
+        }
         println!("info: generating a diff against nightly rustdoc");
 
         let suffix =
@@ -2428,10 +2431,8 @@ impl<'test> TestCx<'test> {
                 }
             }
         };
-        if self.config.has_tidy {
-            tidy_dir(out_dir);
-            tidy_dir(&compare_dir);
-        }
+        tidy_dir(out_dir);
+        tidy_dir(&compare_dir);
 
         let pager = {
             let output = Command::new("git").args(&["config", "--get", "core.pager"]).output().ok();
@@ -3139,8 +3140,14 @@ impl<'test> TestCx<'test> {
         output_kind: TestOutput,
         explicit_format: bool,
     ) -> usize {
+        let stderr_bits = format!("{}.stderr", get_pointer_width(&self.config.target));
         let (stderr_kind, stdout_kind) = match output_kind {
-            TestOutput::Compile => (UI_STDERR, UI_STDOUT),
+            TestOutput::Compile => (
+                {
+                    if self.props.stderr_per_bitwidth { &stderr_bits } else { UI_STDERR }
+                },
+                UI_STDOUT,
+            ),
             TestOutput::Run => (UI_RUN_STDERR, UI_RUN_STDOUT),
         };
 
@@ -3180,15 +3187,12 @@ impl<'test> TestCx<'test> {
         match output_kind {
             TestOutput::Compile => {
                 if !self.props.dont_check_compiler_stdout {
-                    errors += self.compare_output("stdout", &normalized_stdout, &expected_stdout);
+                    errors +=
+                        self.compare_output(stdout_kind, &normalized_stdout, &expected_stdout);
                 }
                 if !self.props.dont_check_compiler_stderr {
-                    let kind = if self.props.stderr_per_bitwidth {
-                        format!("{}bit.stderr", get_pointer_width(&self.config.target))
-                    } else {
-                        String::from("stderr")
-                    };
-                    errors += self.compare_output(&kind, &normalized_stderr, &expected_stderr);
+                    errors +=
+                        self.compare_output(stderr_kind, &normalized_stderr, &expected_stderr);
                 }
             }
             TestOutput::Run => {
@@ -3646,6 +3650,8 @@ impl<'test> TestCx<'test> {
 
         // Remove test annotations like `//~ ERROR text` from the output,
         // since they duplicate actual errors and make the output hard to read.
+        // This mirrors the regex in src/tools/tidy/src/style.rs, please update
+        // both if either are changed.
         normalized =
             Regex::new("\\s*//(\\[.*\\])?~.*").unwrap().replace_all(&normalized, "").into_owned();
 

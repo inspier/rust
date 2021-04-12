@@ -1,4 +1,6 @@
-use crate::utils::{is_normalizable, last_path_segment, snippet};
+use clippy_utils::last_path_segment;
+use clippy_utils::source::snippet;
+use clippy_utils::ty::is_normalizable;
 use if_chain::if_chain;
 use rustc_hir::{Expr, GenericArg, QPath, TyKind};
 use rustc_lint::LateContext;
@@ -14,7 +16,7 @@ use rustc_typeck::check::{cast::CastCheck, FnCtxt, Inherited};
 pub(super) fn get_type_snippet(cx: &LateContext<'_>, path: &QPath<'_>, to_ref_ty: Ty<'_>) -> String {
     let seg = last_path_segment(path);
     if_chain! {
-        if let Some(ref params) = seg.args;
+        if let Some(params) = seg.args;
         if !params.parenthesized;
         if let Some(to_ty) = params.args.iter().filter_map(|arg| match arg {
             GenericArg::Type(ty) => Some(ty),

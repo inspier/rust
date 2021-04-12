@@ -1,4 +1,5 @@
-use crate::utils::{is_type_diagnostic_item, span_lint_and_help};
+use clippy_utils::diagnostics::span_lint_and_help;
+use clippy_utils::ty::is_type_diagnostic_item;
 use rustc_hir as hir;
 use rustc_lint::LateContext;
 use rustc_span::sym;
@@ -6,8 +7,8 @@ use rustc_span::sym;
 use super::UNWRAP_USED;
 
 /// lint use of `unwrap()` for `Option`s and `Result`s
-pub(super) fn check(cx: &LateContext<'_>, expr: &hir::Expr<'_>, unwrap_args: &[hir::Expr<'_>]) {
-    let obj_ty = cx.typeck_results().expr_ty(&unwrap_args[0]).peel_refs();
+pub(super) fn check(cx: &LateContext<'_>, expr: &hir::Expr<'_>, recv: &hir::Expr<'_>) {
+    let obj_ty = cx.typeck_results().expr_ty(recv).peel_refs();
 
     let mess = if is_type_diagnostic_item(cx, obj_ty, sym::option_type) {
         Some((UNWRAP_USED, "an Option", "None"))

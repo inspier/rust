@@ -17,7 +17,7 @@ use crate::iter::{FromIterator, FusedIterator};
 use crate::ops::Index;
 use crate::sys;
 
-/// A hash map implemented with quadratic probing and SIMD lookup.
+/// A [hash map] implemented with quadratic probing and SIMD lookup.
 ///
 /// By default, `HashMap` uses a hashing algorithm selected to provide
 /// resistance against HashDoS attacks. The algorithm is randomly seeded, and a
@@ -62,6 +62,7 @@ use crate::sys;
 /// The original C++ version of SwissTable can be found [here], and this
 /// [CppCon talk] gives an overview of how the algorithm works.
 ///
+/// [hash map]: crate::collections#use-a-hashmap-when
 /// [hashing algorithms available on crates.io]: https://crates.io/keywords/hasher
 /// [SwissTable]: https://abseil.io/blog/20180927-swisstables
 /// [here]: https://github.com/abseil/abseil-cpp/blob/master/absl/container/internal/raw_hash_set.h
@@ -1792,7 +1793,7 @@ impl<'a, K, V, S> RawVacantEntryMut<'a, K, V, S> {
 #[unstable(feature = "hash_raw_entry", issue = "56167")]
 impl<K, V, S> Debug for RawEntryBuilderMut<'_, K, V, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RawEntryBuilder").finish()
+        f.debug_struct("RawEntryBuilder").finish_non_exhaustive()
     }
 }
 
@@ -1812,21 +1813,21 @@ impl<K: Debug, V: Debug, S> Debug for RawOccupiedEntryMut<'_, K, V, S> {
         f.debug_struct("RawOccupiedEntryMut")
             .field("key", self.key())
             .field("value", self.get())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
 #[unstable(feature = "hash_raw_entry", issue = "56167")]
 impl<K, V, S> Debug for RawVacantEntryMut<'_, K, V, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RawVacantEntryMut").finish()
+        f.debug_struct("RawVacantEntryMut").finish_non_exhaustive()
     }
 }
 
 #[unstable(feature = "hash_raw_entry", issue = "56167")]
 impl<K, V, S> Debug for RawEntryBuilder<'_, K, V, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RawEntryBuilder").finish()
+        f.debug_struct("RawEntryBuilder").finish_non_exhaustive()
     }
 }
 
@@ -1866,7 +1867,10 @@ pub struct OccupiedEntry<'a, K: 'a, V: 'a> {
 #[stable(feature = "debug_hash_map", since = "1.12.0")]
 impl<K: Debug, V: Debug> Debug for OccupiedEntry<'_, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("OccupiedEntry").field("key", self.key()).field("value", self.get()).finish()
+        f.debug_struct("OccupiedEntry")
+            .field("key", self.key())
+            .field("value", self.get())
+            .finish_non_exhaustive()
     }
 }
 
@@ -1902,7 +1906,7 @@ impl<K: Debug, V: Debug> Debug for OccupiedError<'_, K, V> {
             .field("key", self.entry.key())
             .field("old_value", self.entry.get())
             .field("new_value", &self.value)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
